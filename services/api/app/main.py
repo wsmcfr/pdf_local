@@ -11,6 +11,7 @@ from .api.deps import require_token
 from .api.documents import router as documents_router
 from .api.embeddings import router as embeddings_router
 from .api.health import router as health_router
+from .api.inbound_claude import router as inbound_claude_router
 from .api.inbound_openai import router as inbound_openai_router
 from .api.inbound_responses import router as inbound_responses_router
 from .api.jobs import router as jobs_router
@@ -122,3 +123,4 @@ app.include_router(
 # the desktop app's X-App-Token so external clients can use standard headers.
 app.include_router(inbound_openai_router, prefix="/v1")
 app.include_router(inbound_responses_router, prefix="/v1")
+app.include_router(inbound_claude_router, prefix="/v1")
