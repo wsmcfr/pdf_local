@@ -11,5 +11,6 @@ faiss-cpu==1.9.*
 jieba==0.42.*
 numpy==2.*
 Pillow==11.*
+mcp==1.30.*
 pytest==8.*
 pytest-asyncio==0.25.*
