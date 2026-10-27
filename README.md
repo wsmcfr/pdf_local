@@ -75,8 +75,12 @@ FAISS 索引、页面缓存、本地模型与 Hugging Face 缓存都放在这个
 - **API Key**：只写入操作系统凭据存储（keyring），不写入 SQLite，也不会回显。
 - **Embedding**：`local`（本地 BGE-M3）、`external`（外部 API）、`auto`（本地失败回退
   外部）、`fts`（仅全文检索）。本地模型可选，首次使用可运行：
-  `.\\.venv\\Scripts\\python.exe scripts\\download_embedding.py`。模型（约 2.2GB）与
-  Hugging Face 缓存都写入数据目录；未下载时测试会立即失败并回退 FTS，不会隐式下载。
+  `.\\.venv\\Scripts\\python.exe scripts\\download_embedding.py`。脚本只下载
+  `SentenceTransformer` 需要的文件（跳过 ONNX、示例图片和可选权重）；模型与 Hugging
+  Face 缓存都写入数据目录，未下载时测试会立即失败并回退 FTS，不会隐式下载。直连
+  Hugging Face 超时时可先设置 `KB_HF_ENDPOINT=https://hf-mirror.com` 再运行脚本。
+  下载完成后，之前只建了 FTS 的文档需要关闭应用并重建向量索引：
+  `.\\.venv\\Scripts\\python.exe scripts\\reindex_embeddings.py`。
 - **检索参数**：`context_chunks` 控制每次问答送入模型的资料块数量。
 
 ## 网关

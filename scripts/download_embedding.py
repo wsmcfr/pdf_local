@@ -18,6 +18,23 @@ sys.path.insert(0, str(ROOT / "services" / "api"))
 
 from app.index.embeddings import MODEL_NAME, model_available  # noqa: E402
 
+# Only the files ``SentenceTransformer`` needs for ``encode()``. Matching
+# whole directories here would also pull ONNX exports, demo images and the
+# optional ColBERT/SPLADE weights (several GB) that the app never loads.
+REQUIRED_PATTERNS = [
+    "config.json",
+    "config_sentence_transformers.json",
+    "modules.json",
+    "sentence_bert_config.json",
+    "special_tokens_map.json",
+    "tokenizer.json",
+    "tokenizer_config.json",
+    "sentencepiece.bpe.model",
+    "pytorch_model.bin",
+    "model.safetensors",
+    "1_Pooling/config.json",
+]
+
 
 def data_dir() -> Path:
     override = os.environ.get("KB_DATA_DIR")
@@ -44,6 +61,14 @@ def configure_cache() -> Path:
     os.environ["HF_HUB_CACHE"] = str(cache_root / "hub")
     os.environ["TRANSFORMERS_CACHE"] = str(cache_root / "transformers")
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    # Optional mirror for networks where huggingface.co keeps timing out.
+    mirror = os.environ.get("KB_HF_ENDPOINT", "").strip()
+    if mirror:
+        os.environ["HF_ENDPOINT"] = mirror
+    # The 2.2GB weight file is easy to stall on slower routes; give the
+    # download more room before huggingface_hub retries.
+    os.environ.setdefault("HF_HUB_DOWNLOAD_TIMEOUT", "60")
+    os.environ.setdefault("HF_HUB_ETAG_TIMEOUT", "30")
     return cache_root
 
 
@@ -69,7 +94,11 @@ def main() -> int:
     target.mkdir(parents=True, exist_ok=True)
     print(f"cache: {cache_root}", flush=True)
     print(f"downloading {MODEL_NAME} (~2.2GB) to {target} ...", flush=True)
-    snapshot_download(repo_id=MODEL_NAME, local_dir=str(target))
+    snapshot_download(
+        repo_id=MODEL_NAME,
+        local_dir=str(target),
+        allow_patterns=REQUIRED_PATTERNS,
+    )
 
     if not model_available(target):
         print(
