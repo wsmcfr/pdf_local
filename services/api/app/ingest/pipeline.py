@@ -43,10 +43,12 @@ class IngestPipeline:
         conn: sqlite3.Connection,
         lock: threading.RLock | None = None,
         vector_store: VectorStore | None = None,
+        embedding_service=None,
     ) -> None:
         self.conn = conn
         self._lock = lock
         self.vector_store = vector_store
+        self.embedding_service = embedding_service
 
     def _guard(self):
         return self._lock if self._lock is not None else nullcontext()
@@ -161,12 +163,17 @@ class IngestPipeline:
         try:
             page_count, ocr_confidence = self._write_pages(item, doc_id, now)
             if self.vector_store is not None:
+                index_kwargs = {
+                    "checkpoint": checkpoint,
+                    "lock": self._lock,
+                }
+                if self.embedding_service is not None:
+                    index_kwargs["encode_fn"] = self.embedding_service.embed
                 completed = index_document(
                     self.conn,
                     self.vector_store,
                     doc_id,
-                    checkpoint=checkpoint,
-                    lock=self._lock,
+                    **index_kwargs,
                 )
                 if not completed:
                     # Cancelled/shutdown mid-index: keep pages, requeue the

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sqlite3
 from typing import Callable
 
@@ -8,7 +9,9 @@ from ..index.fts import search as fts_search
 from ..index.vector_store import VectorStore
 from .retrieve import rrf_fuse
 
-EncodeFn = Callable[[list[str]], list[list[float]]]
+logger = logging.getLogger(__name__)
+
+EncodeFn = Callable[[list[str]], list[list[float]] | None]
 
 KEYWORD_LIMIT = 20
 VECTOR_LIMIT = 20
@@ -18,14 +21,15 @@ class HybridRetriever:
     """Fuse SQLite FTS5 keyword hits with FAISS vector hits via RRF.
 
     ``encode_fn`` is injected so tests can avoid loading BGE-M3. The default
-    lazily loads the real model only when :meth:`search` is called.
+    lazily loads the real model only when :meth:`search` is called. Passing
+    ``None`` disables the vector path; keyword search stays available.
     """
 
     def __init__(
         self,
         conn: sqlite3.Connection,
         vector_store: VectorStore,
-        encode_fn: EncodeFn = encode,
+        encode_fn: EncodeFn | None = encode,
     ) -> None:
         self.conn = conn
         self.vector_store = vector_store
@@ -42,12 +46,18 @@ class HybridRetriever:
         return [self._hydrate(item) for item in fused]
 
     def _vector_results(self, question: str, limit: int) -> list[dict]:
-        # Avoid loading the embedding model at all when nothing is indexed.
-        if self.vector_store.index.ntotal == 0:
+        # Avoid loading the embedding model at all when nothing is indexed or
+        # vector embedding is disabled (e.g. ``fts`` mode).
+        if self.encode_fn is None or self.vector_store.index.ntotal == 0:
             return []
 
-        vectors = self.encode_fn([question])
-        if not vectors:
+        try:
+            vectors = self.encode_fn([question])
+        except Exception:  # noqa: BLE001 - degrade to keyword search only
+            logger.warning("query embedding failed; using FTS only", exc_info=True)
+            return []
+
+        if not vectors or not vectors[0]:
             return []
 
         results: list[dict] = []

@@ -7,6 +7,8 @@ router = APIRouter()
 DEFAULTS = {
     "data_dir": "",
     "ocr_dpi": 300,
+    "embedding_mode": "local",
+    "embedding_provider_id": "",
     "embedding_model": "BAAI/bge-m3",
     "llm_model": "qwen2.5:7b",
     "context_chunks": 8,

@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .api.ask import router as ask_router
 from .api.deps import require_token
 from .api.documents import router as documents_router
+from .api.embeddings import router as embeddings_router
 from .api.health import router as health_router
 from .api.jobs import router as jobs_router
 from .api.models import router as models_router
@@ -16,6 +17,7 @@ from .api.providers import router as providers_router
 from .api.settings import DEFAULTS
 from .api.settings import router as settings_router
 from .db import connect, init_db
+from .index.embedding_service import EmbeddingService
 from .index.vector_store import VectorStore
 from .jobs.runner import JobRunner
 from .qa.retriever import HybridRetriever
@@ -41,8 +43,14 @@ async def lifespan(app: FastAPI):
     }
     vector_store = VectorStore(data_dir / "vectors.faiss")
     app.state.vector_store = vector_store
-    app.state.retriever = HybridRetriever(conn, vector_store)
-    app.state.runner = JobRunner(conn, vector_store)
+    embedding_service = EmbeddingService(conn, app.state.settings)
+    app.state.embedding_service = embedding_service
+    app.state.retriever = HybridRetriever(
+        conn, vector_store, encode_fn=embedding_service.embed
+    )
+    app.state.runner = JobRunner(
+        conn, vector_store, embedding_service=embedding_service
+    )
     app.state.runner.start()
     try:
         yield
@@ -99,6 +107,11 @@ app.include_router(
 )
 app.include_router(
     providers_router,
+    prefix="/api/v1",
+    dependencies=[Depends(require_token)],
+)
+app.include_router(
+    embeddings_router,
     prefix="/api/v1",
     dependencies=[Depends(require_token)],
 )

@@ -16,7 +16,7 @@ from .vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 Checkpoint = Callable[[], bool]
-EncodeFn = Callable[[list[str]], list[list[float]]]
+EncodeFn = Callable[[list[str]], list[list[float]] | None]
 
 EMBED_BATCH_SIZE = 8
 
@@ -56,7 +56,7 @@ def index_document(
     conn: sqlite3.Connection,
     vector_store: VectorStore,
     doc_id: str,
-    encode_fn: EncodeFn = encode,
+    encode_fn: EncodeFn | None = encode,
     checkpoint: Checkpoint | None = None,
     pages: Sequence[sqlite3.Row | dict] | None = None,
     lock: threading.RLock | None = None,
@@ -65,10 +65,12 @@ def index_document(
 
     Previous chunks/FTS rows and their FAISS ids are removed first so that a
     re-import never leaves stale vectors behind. ``encode_fn`` is injected for
-    tests (the default lazily loads BGE-M3). Database writes are serialized
-    with ``lock`` when given, while encoding runs outside the lock so that
-    pause requests stay responsive. Returns ``False`` when a checkpoint asked
-    to stop (cancel/shutdown).
+    tests (the default lazily loads BGE-M3). When it is ``None`` or returns
+    ``None`` the chunks are still indexed in FTS with a ``NULL``
+    ``embedding_id`` so retrieval can fall back to keyword search. Database
+    writes are serialized with ``lock`` when given, while encoding runs outside
+    the lock so that pause requests stay responsive. Returns ``False`` when a
+    checkpoint asked to stop (cancel/shutdown).
     """
     if pages is None:
         pages = _load_pages(conn, doc_id)
@@ -106,14 +108,33 @@ def index_document(
                     break
 
                 batch = chunks[start : start + EMBED_BATCH_SIZE]
-                # Heavy model work happens outside the database lock.
-                vectors = encode_fn([chunk.text for chunk in batch])
+                # Heavy model work happens outside the database lock. A
+                # ``None`` result (disabled/failed embedding) keeps chunks
+                # searchable through FTS without a vector id.
+                try:
+                    vectors = (
+                        encode_fn([chunk.text for chunk in batch])
+                        if encode_fn is not None
+                        else None
+                    )
+                except Exception:  # noqa: BLE001 - degrade to FTS, keep the doc
+                    logger.warning(
+                        "embedding failed for document %s; indexing with FTS only",
+                        doc_id,
+                        exc_info=True,
+                    )
+                    vectors = None
 
                 with _guard(lock):
                     added_ids: list[int] = []
                     added_vectors: list[list[float]] = []
-                    for chunk, vector in zip(batch, vectors):
+                    for offset, chunk in enumerate(batch):
+                        vector = None
+                        if vectors is not None and offset < len(vectors):
+                            vector = vectors[offset]
+
                         chunk_id = uuid.uuid4().hex
+                        embedding_id = next_id if vector is not None else None
                         conn.execute(
                             """
                             INSERT INTO chunks (
@@ -131,14 +152,15 @@ def index_document(
                                 max(1, len(chunk.text) // 2),
                                 chunk.start_offset,
                                 chunk.end_offset,
-                                next_id,
+                                embedding_id,
                                 utc_now(),
                             ),
                         )
                         insert_chunk(conn, chunk_id, doc_id, page_no, chunk.text)
-                        added_ids.append(next_id)
-                        added_vectors.append(list(map(float, vector)))
-                        next_id += 1
+                        if vector is not None:
+                            added_ids.append(next_id)
+                            added_vectors.append(list(map(float, vector)))
+                            next_id += 1
 
                     vector_store.add(added_ids, added_vectors, save=False)
                     conn.commit()

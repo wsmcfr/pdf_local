@@ -35,9 +35,11 @@ class JobRunner:
         self,
         conn: sqlite3.Connection,
         vector_store: VectorStore | None = None,
+        embedding_service=None,
     ) -> None:
         self.conn = conn
         self.vector_store = vector_store
+        self.embedding_service = embedding_service
         self._lock = threading.RLock()
         self.queue: queue.Queue[str] = queue.Queue()
         self.controls: dict[str, dict[str, bool]] = {}
@@ -194,6 +196,7 @@ class JobRunner:
                     self.conn,
                     lock=self._lock,
                     vector_store=self.vector_store,
+                    embedding_service=self.embedding_service,
                 ).run_scan(
                     job_id,
                     payload["root_path"],
