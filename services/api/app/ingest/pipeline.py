@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from ..index.indexer import index_document
+from ..index.vector_store import VectorStore
 from .ocr import ocr_page
 from .pdf import extract_pdf_pages
 from .scanner import ScannedFile, scan_folder
@@ -40,9 +42,11 @@ class IngestPipeline:
         self,
         conn: sqlite3.Connection,
         lock: threading.RLock | None = None,
+        vector_store: VectorStore | None = None,
     ) -> None:
         self.conn = conn
         self._lock = lock
+        self.vector_store = vector_store
 
     def _guard(self):
         return self._lock if self._lock is not None else nullcontext()
@@ -79,9 +83,12 @@ class IngestPipeline:
                 )
                 self.conn.commit()
             try:
-                self._ingest_file(item)
+                completed = self._ingest_file(item, checkpoint)
             except Exception:  # noqa: BLE001 - one bad file must not stop the batch
                 logger.exception("failed to ingest %s", item.path)
+                completed = True
+            if not completed:
+                return False
             with self._guard():
                 self.conn.execute(
                     "UPDATE jobs SET processed = ?, progress = ?, current_file = ?, "
@@ -97,14 +104,23 @@ class IngestPipeline:
                 self.conn.commit()
         return True
 
-    def _ingest_file(self, item: ScannedFile) -> None:
+    def _ingest_file(
+        self,
+        item: ScannedFile,
+        checkpoint: Checkpoint | None = None,
+    ) -> bool:
+        """Ingest a single file. Returns ``False`` when cancelled/shutdown."""
         with self._guard():
             existing = self.conn.execute(
-                "SELECT id, content_hash FROM documents WHERE path = ?",
+                "SELECT id, content_hash, status FROM documents WHERE path = ?",
                 (str(item.path),),
             ).fetchone()
-        if existing and existing["content_hash"] == item.content_hash:
-            return
+        if (
+            existing
+            and existing["content_hash"] == item.content_hash
+            and existing["status"] == "ready"
+        ):
+            return True
 
         doc_id = existing["id"] if existing else uuid.uuid4().hex
         now = utc_now()
@@ -144,6 +160,25 @@ class IngestPipeline:
 
         try:
             page_count, ocr_confidence = self._write_pages(item, doc_id, now)
+            if self.vector_store is not None:
+                completed = index_document(
+                    self.conn,
+                    self.vector_store,
+                    doc_id,
+                    checkpoint=checkpoint,
+                    lock=self._lock,
+                )
+                if not completed:
+                    # Cancelled/shutdown mid-index: keep pages, requeue the
+                    # document so a later scan finishes indexing it.
+                    with self._guard():
+                        self.conn.execute(
+                            "UPDATE documents SET status = 'pending', "
+                            "updated_at = ? WHERE id = ?",
+                            (utc_now(), doc_id),
+                        )
+                        self.conn.commit()
+                    return False
             with self._guard():
                 self.conn.execute(
                     """
@@ -155,8 +190,9 @@ class IngestPipeline:
                     (page_count, ocr_confidence, now, now, doc_id),
                 )
                 self.conn.commit()
+            return True
         except OcrFailed:
-            return
+            return True
         except Exception as exc:  # noqa: BLE001 - record and continue the batch
             logger.exception("failed to extract %s", item.path)
             with self._guard():
@@ -167,6 +203,7 @@ class IngestPipeline:
                     (str(exc), utc_now(), doc_id),
                 )
                 self.conn.commit()
+            return True
 
     def _write_pages(
         self, item: ScannedFile, doc_id: str, now: str

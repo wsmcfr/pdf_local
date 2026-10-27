@@ -11,6 +11,7 @@ from .api.health import router as health_router
 from .api.jobs import router as jobs_router
 from .api.settings import router as settings_router
 from .db import connect, init_db
+from .index.vector_store import VectorStore
 from .jobs.runner import JobRunner
 
 
@@ -21,7 +22,9 @@ async def lifespan(app: FastAPI):
     conn = connect(data_dir / "app.db")
     init_db(conn)
     app.state.db = conn
-    app.state.runner = JobRunner(conn)
+    vector_store = VectorStore(data_dir / "vectors.faiss")
+    app.state.vector_store = vector_store
+    app.state.runner = JobRunner(conn, vector_store)
     app.state.runner.start()
     try:
         yield

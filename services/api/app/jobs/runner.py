@@ -10,6 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from ..index.vector_store import VectorStore
 from ..ingest.pipeline import IngestPipeline
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,13 @@ class JobRunner:
     same connection.
     """
 
-    def __init__(self, conn: sqlite3.Connection) -> None:
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        vector_store: VectorStore | None = None,
+    ) -> None:
         self.conn = conn
+        self.vector_store = vector_store
         self._lock = threading.RLock()
         self.queue: queue.Queue[str] = queue.Queue()
         self.controls: dict[str, dict[str, bool]] = {}
@@ -184,7 +190,11 @@ class JobRunner:
                 self.conn.commit()
 
             if row["type"] == "scan":
-                completed = IngestPipeline(self.conn, lock=self._lock).run_scan(
+                completed = IngestPipeline(
+                    self.conn,
+                    lock=self._lock,
+                    vector_store=self.vector_store,
+                ).run_scan(
                     job_id,
                     payload["root_path"],
                     checkpoint=lambda: self._checkpoint(job_id, control),
