@@ -11,14 +11,21 @@ const items = [
 export default function Sidebar() {
   return (
     <aside className="sidebar">
-      <div className="brand">Local KB</div>
-      <nav className="nav">
+      <div className="brand">
+        <span className="brand-mark" aria-hidden="true" />
+        <span className="brand-text">
+          <strong>Local KB</strong>
+          <small>本地知识库</small>
+        </span>
+      </div>
+      <nav className="nav" aria-label="主导航">
         {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             end={to === "/"}
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            title={label}
           >
             <Icon size={16} aria-hidden="true" />
             <span>{label}</span>

@@ -162,7 +162,7 @@ export default function Settings() {
             <h2>数据目录</h2>
             <label className="field">
               <span>当前数据目录</span>
-              <input type="text" readOnly value={dataDir} placeholder="由 sidecar 管理（默认 ~/.local-kb）" />
+              <input type="text" readOnly value={dataDir} placeholder="正在读取…" />
               <small className="muted">只读。切换数据目录需要重启应用。</small>
             </label>
           </section>

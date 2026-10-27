@@ -107,7 +107,7 @@ export default function Jobs() {
                   </span>
                 </header>
 
-                <div className="progress">
+                <div className={`progress${terminal ? " progress-done" : ""}`}>
                   <div className="progress-bar" style={{ width: `${percent}%` }} />
                 </div>
                 <p className="muted small">

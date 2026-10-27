@@ -49,56 +49,62 @@ export default function StatusBar() {
 
   return (
     <footer className="status-bar">
-      <span
-        className={`status-dot ${
-          status === "ok" ? "ok" : status === "error" ? "bad" : ""
-        }`}
-      />
-      <span>
-        {status === "ok"
-          ? "本地服务已连接"
-          : status === "error"
-            ? "本地服务未连接"
-            : "正在连接本地服务…"}
-      </span>
-      <span className="status-sep">·</span>
-      <span
-        className={`status-dot ${
-          status !== "ok"
-            ? ""
-            : providerConfigured === true
-              ? "ok"
+      <div className="status-items">
+        <span className="status-item">
+          <span
+            className={`status-dot ${
+              status === "ok" ? "ok" : status === "error" ? "bad" : ""
+            }`}
+          />
+          <span>
+            {status === "ok"
+              ? "本地服务已连接"
+              : status === "error"
+                ? "本地服务未连接"
+                : "正在连接本地服务…"}
+          </span>
+        </span>
+        <span className="status-item">
+          <span
+            className={`status-dot ${
+              status !== "ok"
+                ? ""
+                : providerConfigured === true
+                  ? "ok"
+                  : providerConfigured === false
+                    ? "bad"
+                    : ""
+            }`}
+          />
+          <span>
+            {providerConfigured === true
+              ? "Provider 已配置"
               : providerConfigured === false
-                ? "bad"
-                : ""
-        }`}
-      />
-      <span>
-        {providerConfigured === true
-          ? "Provider 已配置"
-          : providerConfigured === false
-            ? "Provider 未配置"
-            : "Provider 状态未知"}
-      </span>
-      <span className="status-sep">·</span>
-      <span
-        className={`status-dot ${
-          status !== "ok"
-            ? ""
-            : gatewayEnabled === true
-              ? "ok"
+                ? "Provider 未配置"
+                : "Provider 状态未知"}
+          </span>
+        </span>
+        <span className="status-item">
+          <span
+            className={`status-dot ${
+              status !== "ok"
+                ? ""
+                : gatewayEnabled === true
+                  ? "ok"
+                  : gatewayEnabled === false
+                    ? "bad"
+                    : ""
+            }`}
+          />
+          <span>
+            {gatewayEnabled === true
+              ? "网关已开启"
               : gatewayEnabled === false
-                ? "bad"
-                : ""
-        }`}
-      />
-      <span>
-        {gatewayEnabled === true
-          ? "网关已开启"
-          : gatewayEnabled === false
-            ? "网关已关闭"
-            : "网关状态未知"}
-      </span>
+                ? "网关已关闭"
+                : "网关状态未知"}
+          </span>
+        </span>
+      </div>
       <button type="button" className="link-button" onClick={() => void refresh()}>
         刷新
       </button>

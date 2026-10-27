@@ -28,6 +28,7 @@ function isNoAnswer(text: string, citations: Citation[]): boolean {
 
 export default function Chat() {
   const [question, setQuestion] = useState("");
+  const [asked, setAsked] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<SourceChunk[]>([]);
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -73,6 +74,7 @@ export default function Chat() {
     abortRef.current = controller;
 
     setBusy(true);
+    setAsked(text);
     setAnswer("");
     setSources([]);
     setCitations([]);
@@ -162,6 +164,8 @@ export default function Chat() {
               资料中没有找到答案。可以换一种问法，或先把相关文档导入资料库。
             </p>
           )}
+
+          {asked && <div className="chat-question">{asked}</div>}
 
           <article className={`answer${busy && !answer ? " answer-pending" : ""}`}>
             {answer ? (

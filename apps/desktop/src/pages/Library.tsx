@@ -105,37 +105,39 @@ export default function Library() {
           </button>
         </div>
       ) : (
-        <table className="table">
-          <thead>
-            <tr>
-              <th>文件</th>
-              <th>状态</th>
-              <th className="numeric">页数</th>
-              <th className="numeric">OCR 置信度</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.id}>
-                <td title={row.path}>{row.file_name}</td>
-                <td>
-                  <span className={`tag status-${row.status}`}>
-                    {STATUS_LABELS[row.status] ?? row.status}
-                  </span>
-                  {row.error && <span className="muted small"> {row.error}</span>}
-                </td>
-                <td className="numeric">{row.page_count}</td>
-                <td className="numeric">
-                  {isLowConfidence(row.ocr_confidence) ? (
-                    <span className="tag warn">{confidenceText(row.ocr_confidence)}</span>
-                  ) : (
-                    confidenceText(row.ocr_confidence)
-                  )}
-                </td>
+        <div className="table-shell">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>文件</th>
+                <th>状态</th>
+                <th className="numeric">页数</th>
+                <th className="numeric">OCR 置信度</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td title={row.path}>{row.file_name}</td>
+                  <td>
+                    <span className={`tag status-${row.status}`}>
+                      {STATUS_LABELS[row.status] ?? row.status}
+                    </span>
+                    {row.error && <span className="muted small"> {row.error}</span>}
+                  </td>
+                  <td className="numeric">{row.page_count}</td>
+                  <td className="numeric">
+                    {isLowConfidence(row.ocr_confidence) ? (
+                      <span className="tag warn">{confidenceText(row.ocr_confidence)}</span>
+                    ) : (
+                      confidenceText(row.ocr_confidence)
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
