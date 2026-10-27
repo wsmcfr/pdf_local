@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { apiFetch } from "../api/client";
 import { streamAsk, type AskEvent } from "../api/stream";
@@ -11,6 +18,75 @@ const SUGGESTIONS = [
   "整理关键流程",
   "有哪些风险？",
 ];
+
+const CITATION_PATTERN = /\[([^\[\]]+?)\s+(p\.|§)(\d+)\]/g;
+
+type SourceOption = {
+  key: string;
+  label: string;
+  source: SourceChunk;
+};
+
+function sourceKey(fileName: string, pageNo: number): string {
+  return `${fileName}::${pageNo}`;
+}
+
+function citationMark(citation: Citation): string {
+  return citation.kind === "markdown" ? "§" : "p.";
+}
+
+/** Turn ``[文件名 p.12]`` spans into clickable page links once citations exist. */
+function renderAnswer(
+  text: string,
+  citations: Citation[],
+  sources: SourceChunk[],
+  onSelect: (source: SourceChunk) => void,
+): ReactNode {
+  if (citations.length === 0) return text;
+
+  const nodes: ReactNode[] = [];
+  let lastIndex = 0;
+  for (const match of text.matchAll(CITATION_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > lastIndex) nodes.push(text.slice(lastIndex, index));
+
+    const raw = match[0];
+    const fileName = match[1];
+    const pageNo = Number(match[3]);
+    const source = sources.find(
+      (item) => item.file_name === fileName && item.page_no === pageNo,
+    );
+
+    if (source) {
+      nodes.push(
+        <button
+          type="button"
+          key={`cite-${index}`}
+          className="inline-citation"
+          title="查看原文页"
+          onClick={() => onSelect(source)}
+        >
+          {raw}
+        </button>,
+      );
+    } else {
+      nodes.push(
+        <span
+          key={`cite-${index}`}
+          className="inline-citation invalid"
+          title="该引用没有出现在检索结果中，可能无法核对"
+        >
+          {raw}
+        </span>,
+      );
+    }
+
+    lastIndex = index + raw.length;
+  }
+
+  if (lastIndex < text.length) nodes.push(text.slice(lastIndex));
+  return <Fragment>{nodes}</Fragment>;
+}
 
 function describeError(data: { code?: string; message: string }): string {
   const messages: Record<string, string> = {
@@ -49,6 +125,7 @@ export default function Chat() {
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const sourcesRef = useRef<SourceChunk[]>([]);
   const pendingRef = useRef("");
   const pumpRef = useRef<number | null>(null);
   const stickRef = useRef(true);
@@ -136,6 +213,7 @@ export default function Chat() {
 
     stopPump();
     pendingRef.current = "";
+    sourcesRef.current = [];
     stickRef.current = true;
 
     setQuestion("");
@@ -154,7 +232,10 @@ export default function Chat() {
       await streamAsk(
         text,
         (event: AskEvent) => {
-          if (event.event === "retrieval") setSources(event.data.chunks);
+          if (event.event === "retrieval") {
+            sourcesRef.current = event.data.chunks;
+            setSources(event.data.chunks);
+          }
           if (event.event === "token") {
             pendingRef.current += event.data.text;
             startPump();
@@ -162,6 +243,21 @@ export default function Chat() {
           if (event.event === "citations") {
             setCitations(event.data.citations);
             setInvalid(event.data.invalid);
+
+            // Show the top-ranked cited page as soon as the answer completes,
+            // so the source pane never looks like an unexplained empty box.
+            const first = event.data.citations[0];
+            if (first) {
+              const match = sourcesRef.current.find(
+                (item) =>
+                  item.file_name === first.file_name &&
+                  item.page_no === first.page_no,
+              );
+              if (match) {
+                setSelected(match);
+                setViewerOpen(true);
+              }
+            }
           }
           if (event.event === "done") setAnswered(true);
           if (event.event === "error") setError(describeError(event.data));
@@ -196,6 +292,30 @@ export default function Chat() {
   function chooseSuggestion(text: string) {
     setQuestion(text);
     textareaRef.current?.focus();
+  }
+
+  function selectSource(source: SourceChunk) {
+    setSelected(source);
+    setViewerOpen(true);
+  }
+
+  const sourceOptions: SourceOption[] = [];
+  const seenSources = new Set<string>();
+  for (const citation of citations) {
+    const key = sourceKey(citation.file_name, citation.page_no);
+    if (seenSources.has(key)) continue;
+    const source = sources.find(
+      (item) =>
+        item.file_name === citation.file_name &&
+        item.page_no === citation.page_no,
+    );
+    if (!source) continue;
+    seenSources.add(key);
+    sourceOptions.push({
+      key,
+      label: `${citation.file_name} · ${citationMark(citation)}${citation.page_no}`,
+      source,
+    });
   }
 
   const noAnswer = answered && !error && isNoAnswer(answer, citations);
@@ -269,7 +389,7 @@ export default function Chat() {
                 aria-live={answered ? "polite" : "off"}
               >
                 {answer ? (
-                  answer
+                  renderAnswer(answer, citations, sources, selectSource)
                 ) : busy ? (
                   <span className="muted">正在检索资料并生成回答…</span>
                 ) : (
@@ -289,10 +409,7 @@ export default function Chat() {
                     ? { documentId: selected.document_id, pageNo: selected.page_no }
                     : null
                 }
-                onSelect={(source) => {
-                  setSelected(source);
-                  setViewerOpen(true);
-                }}
+                onSelect={selectSource}
               />
             )}
           </div>
@@ -358,6 +475,16 @@ export default function Chat() {
                   }`
                 : undefined
             }
+            options={sourceOptions.map(({ key, label }) => ({ key, label }))}
+            selectedKey={
+              selected
+                ? sourceKey(selected.file_name, selected.page_no)
+                : ""
+            }
+            onSelectSource={(key) => {
+              const option = sourceOptions.find((item) => item.key === key);
+              if (option) selectSource(option.source);
+            }}
             onClose={() => setViewerOpen(false)}
           />
         )}

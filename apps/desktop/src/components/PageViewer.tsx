@@ -7,6 +7,9 @@ type Props = {
   documentId: string | null;
   pageNo: number | null;
   title?: string;
+  options?: { key: string; label: string }[];
+  selectedKey?: string;
+  onSelectSource?: (key: string) => void;
   onClose?: () => void;
 };
 
@@ -14,6 +17,9 @@ export default function PageViewer({
   documentId,
   pageNo,
   title,
+  options,
+  selectedKey,
+  onSelectSource,
   onClose,
 }: Props) {
   const [page, setPage] = useState<PageContent | null>(null);
@@ -98,8 +104,27 @@ export default function PageViewer({
         )}
       </header>
 
+      {options && options.length > 1 && (
+        <label className="field viewer-select">
+          <span>引用文件</span>
+          <select
+            value={selectedKey ?? ""}
+            onChange={(event) => onSelectSource?.(event.target.value)}
+          >
+            <option value="">选择要查看的文件…</option>
+            {options.map((option) => (
+              <option key={option.key} value={option.key}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       {!hasSelection ? (
-        <p className="empty small">点击左侧引用，在这里查看原文页图和 OCR 文本。</p>
+        <p className="empty small">
+          点击回答中的文件名或引用列表查看原文页；回答完成后会自动定位到第一条引用。
+        </p>
       ) : (
         <>
           {imageUrl ? (
