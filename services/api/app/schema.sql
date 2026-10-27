@@ -99,4 +99,24 @@ CREATE TABLE IF NOT EXISTS index_meta (
   value TEXT NOT NULL
 );
 
-PRAGMA user_version = 1;
+CREATE TABLE IF NOT EXISTS providers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  base_url TEXT NOT NULL,
+  model TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  key_ref TEXT,
+  extra_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS model_cache (
+  provider_id TEXT NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  models_json TEXT NOT NULL DEFAULT '[]',
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (provider_id)
+);
+
+PRAGMA user_version = 2;

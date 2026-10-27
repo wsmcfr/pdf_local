@@ -12,6 +12,7 @@ from .api.documents import router as documents_router
 from .api.health import router as health_router
 from .api.jobs import router as jobs_router
 from .api.models import router as models_router
+from .api.providers import router as providers_router
 from .api.settings import DEFAULTS
 from .api.settings import router as settings_router
 from .db import connect, init_db
@@ -93,6 +94,11 @@ app.include_router(
 )
 app.include_router(
     models_router,
+    prefix="/api/v1",
+    dependencies=[Depends(require_token)],
+)
+app.include_router(
+    providers_router,
     prefix="/api/v1",
     dependencies=[Depends(require_token)],
 )
