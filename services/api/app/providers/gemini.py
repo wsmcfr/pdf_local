@@ -39,6 +39,11 @@ class GeminiProvider(OpenAICompatibleProvider):
             headers["x-goog-api-key"] = self.api_key
         return headers
 
+    def _stream_headers(self) -> dict[str, str]:
+        headers = self._headers()
+        headers["accept"] = "text/event-stream"
+        return headers
+
     def _chat_body(self, request: ChatRequest) -> dict:
         system_parts: list[str] = []
         contents: list[dict] = []
@@ -133,7 +138,7 @@ class GeminiProvider(OpenAICompatibleProvider):
         try:
             async with self._client() as client:
                 async with client.stream(
-                    "POST", url, json=body, headers=self._headers()
+                    "POST", url, json=body, headers=self._stream_headers()
                 ) as response:
                     self._raise_for_status(response.status_code)
                     async for line in response.aiter_lines():

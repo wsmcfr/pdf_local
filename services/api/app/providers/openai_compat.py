@@ -61,6 +61,12 @@ class OpenAICompatibleProvider:
             headers["Authorization"] = f"Bearer {self.api_key}"
         return headers
 
+    def _stream_headers(self) -> dict[str, str]:
+        """Ask for SSE explicitly so gateways do not buffer JSON responses."""
+        headers = self._headers()
+        headers["Accept"] = "text/event-stream"
+        return headers
+
     @staticmethod
     def _raise_for_status(status: int) -> None:
         if status < 400:
@@ -153,7 +159,7 @@ class OpenAICompatibleProvider:
         try:
             async with self._client() as client:
                 async with client.stream(
-                    "POST", url, json=body, headers=self._headers()
+                    "POST", url, json=body, headers=self._stream_headers()
                 ) as response:
                     self._raise_for_status(response.status_code)
                     async for line in response.aiter_lines():

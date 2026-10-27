@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PanelRightClose } from "lucide-react";
 import { apiFetch } from "../api/client";
 import type { PageContent } from "../api/types";
 
@@ -6,9 +7,15 @@ type Props = {
   documentId: string | null;
   pageNo: number | null;
   title?: string;
+  onClose?: () => void;
 };
 
-export default function PageViewer({ documentId, pageNo, title }: Props) {
+export default function PageViewer({
+  documentId,
+  pageNo,
+  title,
+  onClose,
+}: Props) {
   const [page, setPage] = useState<PageContent | null>(null);
   const [textError, setTextError] = useState("");
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -73,9 +80,22 @@ export default function PageViewer({ documentId, pageNo, title }: Props) {
 
   return (
     <aside className="page-viewer">
-      <header className="panel-header">
-        <h3>原文</h3>
-        {title && <p className="muted">{title}</p>}
+      <header className="panel-header viewer-head">
+        <div className="viewer-head-text">
+          <h3>原文</h3>
+          {title && <p className="muted small viewer-title">{title}</p>}
+        </div>
+        {onClose && (
+          <button
+            type="button"
+            className="icon-button"
+            onClick={onClose}
+            aria-label="收起原文"
+            title="收起原文"
+          >
+            <PanelRightClose size={15} aria-hidden="true" />
+          </button>
+        )}
       </header>
 
       {!hasSelection ? (

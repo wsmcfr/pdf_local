@@ -319,7 +319,10 @@ class CustomProvider(OpenAICompatibleProvider):
                     self.method,
                     self.chat_url,
                     json=body,
-                    headers=self._headers(context),
+                    headers={
+                        **self._headers(context),
+                        "Accept": "text/event-stream",
+                    },
                     params=self._auth_params(),
                 ) as response:
                     self._raise_for_status(response.status_code)

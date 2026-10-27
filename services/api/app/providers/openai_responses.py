@@ -76,7 +76,7 @@ class OpenAIResponsesProvider(OpenAICompatibleProvider):
         try:
             async with self._client() as client:
                 async with client.stream(
-                    "POST", url, json=body, headers=self._headers()
+                    "POST", url, json=body, headers=self._stream_headers()
                 ) as response:
                     self._raise_for_status(response.status_code)
                     event_name: str | None = None
