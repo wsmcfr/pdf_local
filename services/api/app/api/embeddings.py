@@ -124,6 +124,8 @@ def test_embedding(request: Request, payload: dict | None = None) -> dict:
         return {"ok": False, "mode": mode, "fallback": "fts"}
 
     try:
+        if hasattr(service, "test"):
+            return service.test(text)
         vectors = service.embed([text])
     except Exception:  # noqa: BLE001 - the endpoint must never leak errors/keys
         logger.warning("embedding test failed", exc_info=True)

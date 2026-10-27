@@ -95,7 +95,7 @@ export default function Onboarding() {
             <h2>数据目录</h2>
             <p className="muted small">文档索引、向量与设置都保存在本机。</p>
             <p className="path-box">
-              {settings?.data_dir || "由 sidecar 管理（默认 ~/.local-kb）"}
+              {settings?.data_dir || "正在读取数据目录…"}
             </p>
           </div>
         </article>
@@ -134,7 +134,9 @@ export default function Onboarding() {
                   {embedding
                     ? embedding.ok
                       ? `就绪（${embedding.mode}）`
-                      : "未配置，检索会使用 FTS"
+                      : embedding.status === "not_downloaded"
+                        ? "本地 BGE-M3 未下载，检索会使用 FTS"
+                        : "未配置，检索会使用 FTS"
                     : "状态未知"}
                 </p>
                 <p className="muted small">

@@ -23,6 +23,19 @@ const EMBEDDING_MODES: { value: EmbeddingMode; label: string }[] = [
   { value: "fts", label: "仅全文检索（FTS）" },
 ];
 
+const EMBEDDING_STATUS_LABELS: Record<string, string> = {
+  ready: "就绪",
+  not_downloaded: "本地模型未下载",
+  not_configured: "外部 Provider 未配置",
+  fts: "仅全文检索（FTS）",
+  auto: "自动（优先本地）",
+  auto_fts: "自动（当前回退 FTS）",
+};
+
+function statusLabel(status: string): string {
+  return EMBEDDING_STATUS_LABELS[status] ?? status;
+}
+
 function describeError(cause: unknown): string {
   const raw = cause instanceof Error ? cause.message : "请求失败";
   const messages: Record<string, string> = {
@@ -197,6 +210,10 @@ export default function GatewaySettings() {
             ? `（${result.dimension} 维）`
             : "";
         setEmbeddingMessage(`Embedding 测试成功${dimension}。`);
+      } else if (result.reason === "LOCAL_MODEL_NOT_DOWNLOADED") {
+        setEmbeddingError(
+          "本地 BGE-M3 尚未下载。请运行 .\\.venv\\Scripts\\python.exe scripts\\download_embedding.py，或切换为 FTS / 外部 Embedding。",
+        );
       } else {
         setEmbeddingError("Embedding 测试失败，检索会回退到 FTS。");
       }
@@ -540,8 +557,17 @@ export default function GatewaySettings() {
             </label>
 
             <p className="muted small">
-              状态：{embedding.status} · 本地模型：{embedding.local_model}
+              状态：{statusLabel(embedding.status)} · 本地模型：
+              {embedding.local_model}
             </p>
+            {embedding.status === "not_downloaded" && (
+              <p className="notice warn small">
+                本地 BGE-M3 尚未下载，点击“测试 Embedding”会立即返回失败并回退
+                FTS。如需本地向量检索，请运行
+                .\.venv\Scripts\python.exe scripts\download_embedding.py；模型与
+                Hugging Face 缓存都会写入数据目录，不会占用 C 盘。
+              </p>
+            )}
 
             <div className="header-actions">
               <button

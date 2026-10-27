@@ -23,7 +23,11 @@ DEFAULTS = {
 def get_settings(request: Request) -> dict:
     rows = request.app.state.db.execute("SELECT key, value FROM settings").fetchall()
     stored = {row["key"]: json.loads(row["value"]) for row in rows}
-    return {**DEFAULTS, **stored}
+    body = {**DEFAULTS, **stored}
+    data_dir = getattr(request.app.state, "data_dir", None)
+    if data_dir is not None:
+        body["data_dir"] = str(data_dir)
+    return body
 
 
 @router.patch("/settings")

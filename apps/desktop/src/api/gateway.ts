@@ -16,6 +16,7 @@ export type EmbeddingTestResult = {
   mode?: string;
   dimension?: number;
   fallback?: string;
+  reason?: string;
 };
 
 async function read<T>(response: Response): Promise<T> {

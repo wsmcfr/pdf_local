@@ -60,8 +60,10 @@ npm run dev
 .\scripts\build-sidecar.ps1
 ```
 
-数据目录默认为 `~/.local-kb`，可通过 `KB_DATA_DIR` 覆盖。桌面端每次启动会生成
-`KB_TOKEN` 并只在本机进程间使用。
+数据目录：开发模式下默认为仓库下的 `data/`（例如 `F:\xiangfa\data`），可用
+`KB_DATA_DIR` 覆盖；打包后的 sidecar 未设置该变量时回退到 `~/.local-kb`。数据库、
+FAISS 索引、页面缓存、本地模型与 Hugging Face 缓存都放在这个目录，不会默认写入 C 盘。
+桌面端每次启动会生成 `KB_TOKEN` 并只在本机进程间使用。
 
 ## 配置
 
@@ -73,7 +75,8 @@ npm run dev
 - **API Key**：只写入操作系统凭据存储（keyring），不写入 SQLite，也不会回显。
 - **Embedding**：`local`（本地 BGE-M3）、`external`（外部 API）、`auto`（本地失败回退
   外部）、`fts`（仅全文检索）。本地模型可选，首次使用可运行：
-  `.\\.venv\\Scripts\\python.exe scripts\\download_embedding.py`
+  `.\\.venv\\Scripts\\python.exe scripts\\download_embedding.py`。模型（约 2.2GB）与
+  Hugging Face 缓存都写入数据目录；未下载时测试会立即失败并回退 FTS，不会隐式下载。
 - **检索参数**：`context_chunks` 控制每次问答送入模型的资料块数量。
 
 ## 网关

@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 
 from app.db import connect, init_db
 from app.index.embedding_service import EmbeddingService
+from app.index.embeddings import model_available
 from app.index.fts import search
 from app.index.indexer import index_document
 from app.index.vector_store import VectorStore
@@ -130,6 +131,38 @@ def test_info_and_test_never_expose_keys(tmp_path):
     assert info["local_model"] == "BAAI/bge-m3"
     assert "api_key" not in info
     assert service.test("hello") == {"ok": True, "mode": "local", "dimension": 3}
+
+
+def test_model_available_requires_weights(tmp_path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert not model_available(empty)
+    assert not model_available(None)
+
+    partial = tmp_path / "partial"
+    partial.mkdir()
+    (partial / "config.json").write_text("{}")
+    assert not model_available(partial)
+
+    complete = tmp_path / "complete" / "0_Transformer"
+    complete.mkdir(parents=True)
+    (complete / "model.safetensors").write_text("weights")
+    assert model_available(tmp_path / "complete")
+
+
+def test_local_mode_without_downloaded_model_falls_back_to_fts(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("KB_EMBEDDING_MODEL_PATH", raising=False)
+    conn = connect(tmp_path / "app.db")
+    service = EmbeddingService(conn, {"embedding_mode": "local"})
+
+    assert service.info()["status"] == "not_downloaded"
+    assert service.embed(["hello"]) is None
+    result = service.test("hello")
+    assert result["ok"] is False
+    assert result["fallback"] == "fts"
+    assert result["reason"] == "LOCAL_MODEL_NOT_DOWNLOADED"
 
 
 # -- indexer ---------------------------------------------------------------

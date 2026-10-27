@@ -57,6 +57,9 @@ pub fn spawn(app: &AppHandle) -> Result<(ServerInfo, Child), String> {
     let mut cmd = if cfg!(debug_assertions) {
         let mut c = dev_python(&api);
         c.env("PYTHONPATH", &api);
+        // Keep large indexes/models/page caches out of the user's C: drive in
+        // development. A packaged app can override this with KB_DATA_DIR.
+        c.env("KB_DATA_DIR", api.join("../../data"));
         c
     } else {
         let resource_dir = app.path().resource_dir().map_err(|e| e.to_string())?;

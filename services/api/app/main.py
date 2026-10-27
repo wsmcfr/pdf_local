@@ -29,6 +29,7 @@ from .index.embedding_service import EmbeddingService
 from .index.vector_store import VectorStore
 from .jobs.runner import JobRunner
 from .mcp_server import create_mcp_server
+from .paths import configure_huggingface_cache, default_data_dir
 from .qa.retriever import HybridRetriever
 
 MCP_PATH = "/mcp"
@@ -107,11 +108,12 @@ class McpAuthMiddleware:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    data_dir = Path(os.environ.get("KB_DATA_DIR") or (Path.home() / ".local-kb"))
+    data_dir = default_data_dir()
+    configure_huggingface_cache(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
     app.state.data_dir = data_dir
-    # Prefer a locally downloaded BGE-M3 copy; embeddings falls back to the hub
-    # model name when this directory is absent.
+    # Point the local embedder at the data directory. It never downloads
+    # implicitly; users run scripts/download_embedding.py or choose external/FTS.
     previous_embedding_path = os.environ.get("KB_EMBEDDING_MODEL_PATH")
     if not previous_embedding_path:
         os.environ["KB_EMBEDDING_MODEL_PATH"] = str(data_dir / "models" / "bge-m3")

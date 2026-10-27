@@ -21,12 +21,14 @@ from .db import connect, init_db
 from .index.embedding_service import EmbeddingService
 from .index.vector_store import VectorStore
 from .mcp_server import create_mcp_server
+from .paths import configure_huggingface_cache, default_data_dir
 from .qa.retriever import HybridRetriever
 
 
 def build_state(data_dir: Path) -> SimpleNamespace:
     """Build the subset of ``app.state`` the MCP tools need."""
     data_dir = Path(data_dir)
+    configure_huggingface_cache(data_dir)
     data_dir.mkdir(parents=True, exist_ok=True)
 
     if not os.environ.get("KB_EMBEDDING_MODEL_PATH"):
@@ -59,7 +61,7 @@ def build_state(data_dir: Path) -> SimpleNamespace:
 
 
 def main() -> None:
-    data_dir = Path(os.environ.get("KB_DATA_DIR") or (Path.home() / ".local-kb"))
+    data_dir = default_data_dir()
     state = build_state(data_dir)
     server = create_mcp_server(lambda: state)
     try:

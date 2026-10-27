@@ -18,7 +18,12 @@ from typing import Any
 
 from ..providers import registry
 from ..providers.factory import create_provider
-from .embeddings import MODEL_NAME, encode
+from .embeddings import (
+    MODEL_NAME,
+    LocalModelUnavailable,
+    encode,
+    local_model_available,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -130,15 +135,29 @@ class EmbeddingService:
             configured = bool(provider_id) and bool(model) and self._provider_row() is not None
             info["ok"] = configured
             info["status"] = "ready" if configured else "not_configured"
+        elif mode == "local":
+            available = local_model_available()
+            info["ok"] = available
+            info["status"] = "ready" if available else "not_downloaded"
         elif mode == "auto":
-            info["status"] = "auto"
+            info["status"] = "auto" if local_model_available() else "auto_fts"
         return info
 
     def test(self, text: str) -> dict:
         """Embed a single string and report a safe, key-free result."""
         vectors = self.embed([text])
         if not vectors or not vectors[0]:
-            return {"ok": False, "mode": self.mode, "fallback": "fts"}
+            reason = (
+                "LOCAL_MODEL_NOT_DOWNLOADED"
+                if self.mode == "local" and not local_model_available()
+                else "EMBEDDING_UNAVAILABLE"
+            )
+            return {
+                "ok": False,
+                "mode": self.mode,
+                "fallback": "fts",
+                "reason": reason,
+            }
         return {"ok": True, "mode": self.mode, "dimension": len(vectors[0])}
 
     # -- local -------------------------------------------------------------
@@ -146,6 +165,11 @@ class EmbeddingService:
     def _local(self, texts: list[str]) -> list[list[float]] | None:
         try:
             result = self.local_encode(texts)
+        except LocalModelUnavailable:
+            logger.warning(
+                "local embedding model is not downloaded; using external/FTS fallback"
+            )
+            return None
         except Exception:  # noqa: BLE001 - fall back to external/FTS
             logger.warning("local embedding failed", exc_info=True)
             return None
