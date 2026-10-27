@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { Settings as SettingsPayload } from "../api/types";
-
-const MODELS = ["qwen2.5:7b", "qwen2.5:4b"];
+import GatewaySettings from "./GatewaySettings";
+import ProviderSettings from "./ProviderSettings";
 
 type Draft = {
   ocr_dpi: string;
-  llm_model: string;
   context_chunks: string;
   offline_mode: boolean;
 };
@@ -19,7 +18,6 @@ export default function Settings() {
   const [dataDir, setDataDir] = useState("");
   const [draft, setDraft] = useState<Draft>({
     ocr_dpi: "300",
-    llm_model: MODELS[0],
     context_chunks: "8",
     offline_mode: true,
   });
@@ -34,7 +32,6 @@ export default function Settings() {
       setDataDir(settings.data_dir);
       setDraft({
         ocr_dpi: String(settings.ocr_dpi),
-        llm_model: settings.llm_model,
         context_chunks: String(settings.context_chunks),
         offline_mode: settings.offline_mode,
       });
@@ -61,7 +58,6 @@ export default function Settings() {
     try {
       const payload = {
         ocr_dpi: Math.min(Math.max(Number(draft.ocr_dpi) || 300, 72), 600),
-        llm_model: draft.llm_model,
         context_chunks: Math.min(
           Math.max(Number(draft.context_chunks) || 8, 1),
           20,
@@ -77,7 +73,6 @@ export default function Settings() {
       setDataDir(settings.data_dir);
       setDraft({
         ocr_dpi: String(settings.ocr_dpi),
-        llm_model: settings.llm_model,
         context_chunks: String(settings.context_chunks),
         offline_mode: settings.offline_mode,
       });
@@ -88,10 +83,6 @@ export default function Settings() {
       setSaving(false);
     }
   }
-
-  const models = MODELS.includes(draft.llm_model)
-    ? MODELS
-    : [...MODELS, draft.llm_model];
 
   return (
     <section className="page">
@@ -134,22 +125,7 @@ export default function Settings() {
           </section>
 
           <section className="card">
-            <h2>问答模型</h2>
-            <label className="field">
-              <span>Ollama 模型</span>
-              <select
-                value={draft.llm_model}
-                onChange={(event) => update("llm_model", event.target.value)}
-              >
-                {models.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
-                ))}
-              </select>
-              <small className="muted">7B 效果更好，4B 速度更快。</small>
-            </label>
-
+            <h2>检索与回答</h2>
             <label className="field">
               <span>检索片段数</span>
               <input
@@ -162,6 +138,9 @@ export default function Settings() {
               />
               <small className="muted">每次提问带入模型的资料片段数量。</small>
             </label>
+            <small className="muted">
+              问答模型在下方 Provider 管理中配置。
+            </small>
           </section>
 
           <section className="card">
@@ -189,6 +168,9 @@ export default function Settings() {
           </section>
         </div>
       )}
+
+      <ProviderSettings />
+      <GatewaySettings />
     </section>
   );
 }

@@ -16,6 +16,7 @@ DEFAULTS = {
     "offline_mode": True,
     "gateway_enabled": False,
     "gateway_rag_mode": "auto",
+    "mcp_enabled": True,
 }
 
 

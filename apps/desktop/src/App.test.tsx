@@ -4,14 +4,27 @@ import App from "./App";
 
 vi.mock("./api/client", () => ({
   apiFetch: vi.fn(async (path: string) => {
+    const json = (data: unknown) => ({
+      ok: true,
+      status: 200,
+      json: async () => data,
+    });
     if (path === "/health") {
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ ok: true, ollama: false, version: "0.1.0" }),
-      };
+      return json({ ok: true, version: "0.1.0" });
     }
-    return { ok: true, status: 200, json: async () => [] };
+    if (path === "/providers") {
+      return json([]);
+    }
+    if (path === "/gateway/config") {
+      return json({
+        enabled: false,
+        rag_mode: "auto",
+        provider_id: "",
+        mcp_enabled: true,
+        token: "gateway-token",
+      });
+    }
+    return json([]);
   }),
 }));
 
@@ -24,6 +37,8 @@ describe("App", () => {
     expect(
       await screen.findByText("还没有资料。选择一个文件夹开始导入。"),
     ).toBeInTheDocument();
-    expect(await screen.findByText("Ollama 未启动")).toBeInTheDocument();
+    expect(await screen.findByText("Provider 未配置")).toBeInTheDocument();
+    expect(await screen.findByText("网关已关闭")).toBeInTheDocument();
+    expect(screen.queryByText("Ollama 未启动")).not.toBeInTheDocument();
   });
 });

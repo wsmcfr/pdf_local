@@ -67,6 +67,21 @@ def get_gateway_token() -> str:
     return token
 
 
+def rotate_gateway_token() -> str:
+    """Generate and persist a new gateway token.
+
+    The in-process fallback is cleared first so a failed keyring write cannot
+    leave the old cached token usable.
+    """
+    global _generated_token
+
+    _generated_token = None
+    token = secrets.token_urlsafe(32)
+    secret_store.set_secret(TOKEN_KEY, token)
+    _generated_token = token
+    return token
+
+
 def _bearer_token(authorization: str | None) -> str | None:
     if not authorization:
         return None

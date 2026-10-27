@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from ..providers import errors, factory, registry, secret_store
 from ..providers.base import ChatMessage, ChatRequest
+from ..providers.presets import PRESETS
 
 router = APIRouter()
 
@@ -165,6 +166,11 @@ def list_providers(request: Request) -> list[dict]:
         "SELECT * FROM providers ORDER BY created_at ASC"
     ).fetchall()
     return [_row_dict(row) for row in rows]
+
+
+@router.get("/providers/presets")
+def list_presets() -> list[dict]:
+    return PRESETS
 
 
 @router.get("/providers/{provider_id}")

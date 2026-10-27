@@ -13,6 +13,7 @@ from .api.ask import router as ask_router
 from .api.deps import require_token
 from .api.documents import router as documents_router
 from .api.embeddings import router as embeddings_router
+from .api.gateway import router as gateway_router
 from .api.gateway_auth import get_gateway_token
 from .api.health import router as health_router
 from .api.inbound_claude import router as inbound_claude_router
@@ -85,6 +86,10 @@ class McpAuthMiddleware:
             response = JSONResponse(
                 {"detail": "GATEWAY_DISABLED"}, status_code=403
             )
+            await response(scope, receive, send)
+            return
+        if not settings.get("mcp_enabled", True):
+            response = JSONResponse({"detail": "MCP_DISABLED"}, status_code=403)
             await response(scope, receive, send)
             return
 
@@ -189,6 +194,11 @@ app.include_router(
 )
 app.include_router(
     embeddings_router,
+    prefix="/api/v1",
+    dependencies=[Depends(require_token)],
+)
+app.include_router(
+    gateway_router,
     prefix="/api/v1",
     dependencies=[Depends(require_token)],
 )

@@ -7,8 +7,14 @@ import PageViewer from "../components/PageViewer";
 
 function describeError(data: { code?: string; message: string }): string {
   const messages: Record<string, string> = {
-    OLLAMA_UNAVAILABLE:
-      "无法连接本地模型服务（Ollama）。请先启动 Ollama 并确认模型已下载。",
+    PROVIDER_NOT_CONFIGURED:
+      "尚未配置问答 Provider。请到设置页添加 Provider、填写密钥并选择模型。",
+    INVALID_PROVIDER_CONFIG: "Provider 配置不完整，请在设置页检查类型与地址。",
+    UPSTREAM_AUTH_ERROR: "Provider 密钥无效或没有访问权限。",
+    UPSTREAM_RATE_LIMIT: "Provider 请求过于频繁，请稍后重试。",
+    UPSTREAM_TIMEOUT: "Provider 响应超时，请稍后重试。",
+    UPSTREAM_NOT_FOUND: "Provider 接口地址不存在，请检查 Base URL。",
+    UPSTREAM_ERROR: "Provider 请求失败，请稍后重试。",
     RETRIEVAL_FAILED: "检索失败，请稍后重试。",
     LLM_ERROR: "生成回答失败，请稍后重试。",
     QUESTION_REQUIRED: "请输入问题。",
