@@ -10,6 +10,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from ..ingest.pipeline import IngestPipeline
+
 logger = logging.getLogger(__name__)
 
 TERMINAL_STATUSES = {"done", "failed", "cancelled"}
@@ -181,7 +183,25 @@ class JobRunner:
                 )
                 self.conn.commit()
 
-            # Task 3/4/5 will replace this placeholder with the real pipeline.
+            if row["type"] == "scan":
+                completed = IngestPipeline(self.conn, lock=self._lock).run_scan(
+                    job_id,
+                    payload["root_path"],
+                    checkpoint=lambda: self._checkpoint(job_id, control),
+                )
+                if not completed or not self._checkpoint(job_id, control):
+                    return
+                with self._lock:
+                    self.conn.execute(
+                        "UPDATE jobs SET status = 'done', progress = 1, "
+                        "processed = total, current_file = NULL, updated_at = ? "
+                        "WHERE id = ?",
+                        (utc_now(), job_id),
+                    )
+                    self.conn.commit()
+                return
+
+            # Non-scan jobs still use the placeholder loop until Task 4/5 land.
             for index in range(steps):
                 if not self._checkpoint(job_id, control):
                     return

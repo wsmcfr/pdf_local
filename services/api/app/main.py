@@ -6,6 +6,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.deps import require_token
+from .api.documents import router as documents_router
 from .api.health import router as health_router
 from .api.jobs import router as jobs_router
 from .api.settings import router as settings_router
@@ -55,6 +56,11 @@ app.include_router(
 )
 app.include_router(
     settings_router,
+    prefix="/api/v1",
+    dependencies=[Depends(require_token)],
+)
+app.include_router(
+    documents_router,
     prefix="/api/v1",
     dependencies=[Depends(require_token)],
 )

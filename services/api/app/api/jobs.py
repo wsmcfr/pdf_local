@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter()
@@ -19,7 +21,12 @@ def scan(payload: dict, request: Request) -> dict:
     root_path = payload.get("root_path")
     if not root_path:
         raise HTTPException(status_code=400, detail="root_path required")
-    return runner(request).enqueue("scan", {"root_path": str(root_path)})
+
+    root = Path(str(root_path)).expanduser()
+    if not root.exists() or not root.is_dir():
+        raise HTTPException(status_code=400, detail="INVALID_ROOT")
+
+    return runner(request).enqueue("scan", {"root_path": str(root.resolve())})
 
 
 @router.get("/jobs")

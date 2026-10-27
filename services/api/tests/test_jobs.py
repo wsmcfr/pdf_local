@@ -31,7 +31,7 @@ def test_job_can_be_paused_and_resumed(tmp_path):
     runner.start()
     try:
         job = runner.enqueue(
-            "scan",
+            "noop",
             {"root_path": str(tmp_path), "steps": 40, "delay": 0.05},
         )
         assert job["status"] in {"queued", "running"}
@@ -64,7 +64,7 @@ def test_job_can_be_cancelled_while_running(tmp_path):
     runner.start()
     try:
         job = runner.enqueue(
-            "scan",
+            "noop",
             {"root_path": str(tmp_path), "steps": 100, "delay": 0.02},
         )
         assert wait_for_status(conn, job["id"], {"running"}, timeout=2) == "running"
@@ -90,7 +90,7 @@ def test_unfinished_jobs_are_requeued_on_restart(tmp_path):
             INSERT INTO jobs
               (id, type, status, progress, total, processed, payload_json,
                created_at, updated_at)
-            VALUES (?, 'scan', ?, 0, 0, 0, ?, ?, ?)
+            VALUES (?, 'noop', ?, 0, 0, 0, ?, ?, ?)
             """,
             (job_id, status, payload, now, now),
         )
