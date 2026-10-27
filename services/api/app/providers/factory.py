@@ -7,6 +7,7 @@ import httpx
 from .anthropic import AnthropicProvider
 from .base import Provider, ProviderConfig
 from .errors import ProviderConfigError
+from .gemini import GeminiProvider
 from .openai_compat import OpenAICompatibleProvider
 from .openai_responses import OpenAIResponsesProvider
 
@@ -36,6 +37,14 @@ def create_provider(
         )
     if kind == "anthropic":
         return AnthropicProvider(
+            config.base_url,
+            config.api_key,
+            config.model,
+            transport=transport,
+            timeout=timeout,
+        )
+    if kind == "gemini":
+        return GeminiProvider(
             config.base_url,
             config.api_key,
             config.model,

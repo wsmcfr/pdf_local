@@ -386,8 +386,15 @@ def test_test_endpoint_requires_model(client, install_fake):
     assert response.json()["detail"] == "MODEL_REQUIRED"
 
 
-def test_unsupported_kind_is_reported_as_invalid_config(client):
+def test_unsupported_kind_is_reported_as_invalid_config(client, monkeypatch):
     created = create_provider(client, kind="gemini", api_key=API_KEY)
+
+    def unsupported(config, **kwargs):
+        raise ProviderConfigError("unsupported provider kind")
+
+    # ``app.api.providers`` reaches the factory through its module attribute
+    # (``factory.create_provider``), so patch that instead of a concrete kind.
+    monkeypatch.setattr("app.api.providers.factory.create_provider", unsupported)
 
     response = client.post(f"/api/v1/providers/{created['id']}/models", headers=HEADERS)
 
