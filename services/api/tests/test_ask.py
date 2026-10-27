@@ -1,6 +1,7 @@
-import app.qa.answer as answer_module
-from app.llm.ollama import OllamaUnavailable
+import app.api.ask as ask_module
 from app.main import app
+from app.providers import errors
+from app.providers.base import ChatChunk, ProviderConfig
 from fastapi.testclient import TestClient
 
 CONTEXTS = [
@@ -16,6 +17,7 @@ CONTEXTS = [
 ]
 
 HEADERS = {"X-App-Token": "secret"}
+MODEL = "test-model"
 
 
 class FakeRetriever:
@@ -26,6 +28,26 @@ class FakeRetriever:
     def search(self, question, limit=8):
         self.calls.append((question, limit))
         return self.contexts
+
+
+class FakeProvider:
+    def __init__(self, chunks=None, error=None):
+        self.chunks = chunks or []
+        self.error = error
+        self.requests = []
+
+    async def list_models(self):
+        return []
+
+    async def stream_chat(self, request):
+        self.requests.append(request)
+        if self.error is not None:
+            raise self.error
+        for chunk in self.chunks:
+            yield chunk
+
+    async def embed(self, texts):
+        return None
 
 
 def event_names(body):
@@ -42,17 +64,58 @@ def make_client(tmp_path, monkeypatch):
     return TestClient(app)
 
 
-def test_ask_streams_retrieval_tokens_and_citations(tmp_path, monkeypatch):
-    async def fake_stream(model, messages):
-        assert messages[0]["role"] == "system"
-        assert "报告.pdf p.12" in messages[1]["content"]
-        yield "营收增长 20%"
-        yield " [报告.pdf p.12]。"
+def add_provider(client, model=MODEL):
+    conn = client.app.state.db
+    conn.execute(
+        "INSERT INTO providers"
+        "(id, name, kind, base_url, model, enabled, key_ref, extra_json,"
+        " created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "p1",
+            "Test Provider",
+            "openai_chat",
+            "https://example.invalid/v1",
+            model,
+            1,
+            None,
+            "{}",
+            "2026-01-01T00:00:00+00:00",
+            "2026-01-01T00:00:00+00:00",
+        ),
+    )
+    conn.commit()
 
-    monkeypatch.setattr(answer_module, "stream_chat", fake_stream)
+
+def use_provider(monkeypatch, provider, model=MODEL):
+    monkeypatch.setattr(
+        ask_module.registry,
+        "load_config",
+        lambda row: ProviderConfig(
+            id=row["id"],
+            name=row["name"],
+            kind=row["kind"],
+            base_url=row["base_url"],
+            model=row["model"],
+        ),
+    )
+    monkeypatch.setattr(
+        ask_module.factory, "create_provider", lambda config: provider
+    )
+
+
+def test_ask_streams_retrieval_tokens_and_citations(tmp_path, monkeypatch):
+    provider = FakeProvider(
+        chunks=[
+            ChatChunk(type="text", text="营收增长 20%"),
+            ChatChunk(type="text", text=" [报告.pdf p.12]。"),
+        ]
+    )
+    use_provider(monkeypatch, provider)
     retriever = FakeRetriever(CONTEXTS)
 
     with make_client(tmp_path, monkeypatch) as client:
+        add_provider(client)
         app.state.retriever = retriever
         response = client.post(
             "/api/v1/ask",
@@ -67,21 +130,27 @@ def test_ask_streams_retrieval_tokens_and_citations(tmp_path, monkeypatch):
     assert '"page_no": 12' in body
     assert '"kind": "pdf"' in body
     assert 'data: {"text": "营收增长 20%"}' in body
-    assert "营收增长 20%" in body
+    assert '"model": "test-model"' in body
     assert retriever.calls == [("营收增长多少？", 8)]
 
+    assert len(provider.requests) == 1
+    request = provider.requests[0]
+    assert request.model == MODEL
+    assert request.stream is True
+    assert [message.role for message in request.messages] == ["system", "user"]
+    assert "报告.pdf p.12" in request.messages[1].content
+    assert "营收增长多少？" in request.messages[1].content
 
-def test_ask_without_evidence_returns_no_answer_without_calling_ollama(
+
+def test_ask_without_evidence_returns_no_answer_without_calling_provider(
     tmp_path, monkeypatch
 ):
-    async def must_not_call(model, messages):
-        raise AssertionError("Ollama must not be called without evidence")
-        yield ""  # pragma: no cover - makes this an async generator
-
-    monkeypatch.setattr(answer_module, "stream_chat", must_not_call)
+    provider = FakeProvider()
+    use_provider(monkeypatch, provider)
     retriever = FakeRetriever([])
 
     with make_client(tmp_path, monkeypatch) as client:
+        add_provider(client)
         app.state.retriever = retriever
         response = client.post(
             "/api/v1/ask",
@@ -95,15 +164,11 @@ def test_ask_without_evidence_returns_no_answer_without_calling_ollama(
     assert "资料中没有找到" in body
     assert 'data: {"text": "资料中没有找到。"}' in body
     assert "event: error" not in body
+    assert provider.requests == []
     assert retriever.calls == [("知识库里有什么？", 8)]
 
 
-def test_ask_reports_ollama_unavailable_as_sse_error(tmp_path, monkeypatch):
-    async def unavailable(model, messages):
-        raise OllamaUnavailable("connection refused")
-        yield ""  # pragma: no cover - makes this an async generator
-
-    monkeypatch.setattr(answer_module, "stream_chat", unavailable)
+def test_ask_without_provider_returns_sse_error(tmp_path, monkeypatch):
     retriever = FakeRetriever(CONTEXTS)
 
     with make_client(tmp_path, monkeypatch) as client:
@@ -115,8 +180,30 @@ def test_ask_reports_ollama_unavailable_as_sse_error(tmp_path, monkeypatch):
         )
 
     assert response.status_code == 200
+    assert event_names(response.text) == ["error"]
+    assert "PROVIDER_NOT_CONFIGURED" in response.text
+    assert retriever.calls == []
+
+
+def test_ask_maps_provider_auth_error_to_sse_code(tmp_path, monkeypatch):
+    provider = FakeProvider(error=errors.ProviderAuthError("invalid key sk-secret"))
+    use_provider(monkeypatch, provider)
+    retriever = FakeRetriever(CONTEXTS)
+
+    with make_client(tmp_path, monkeypatch) as client:
+        add_provider(client)
+        app.state.retriever = retriever
+        response = client.post(
+            "/api/v1/ask",
+            json={"question": "营收增长多少？"},
+            headers=HEADERS,
+        )
+
+    assert response.status_code == 200
     assert event_names(response.text) == ["retrieval", "error"]
-    assert "OLLAMA_UNAVAILABLE" in response.text
+    assert "UPSTREAM_AUTH_ERROR" in response.text
+    assert "Provider 密钥无效或没有访问权限。" in response.text
+    assert "sk-secret" not in response.text
 
 
 def test_ask_requires_question(tmp_path, monkeypatch):

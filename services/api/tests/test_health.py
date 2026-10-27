@@ -21,4 +21,8 @@ def test_health_requires_token(monkeypatch):
         headers={"X-App-Token": "secret"},
     )
     assert response.status_code == 200
-    assert response.json()["ok"] is True
+    body = response.json()
+    assert body["ok"] is True
+    assert body["version"] == "0.1.0"
+    assert "ollama" not in body
+    assert "providers" not in body

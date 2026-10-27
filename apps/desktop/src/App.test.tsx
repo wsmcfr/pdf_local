@@ -39,6 +39,5 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(await screen.findByText("Provider 未配置")).toBeInTheDocument();
     expect(await screen.findByText("网关已关闭")).toBeInTheDocument();
-    expect(screen.queryByText("Ollama 未启动")).not.toBeInTheDocument();
   });
 });

@@ -41,6 +41,14 @@ for package in ["torch", "transformers", "onnxruntime"]:
     except Exception as exc:  # noqa: BLE001
         print(f"[kb-server.spec] collect_submodules({package}) skipped: {exc}")
 
+# MCP SDK / keyring load pieces lazily or through entry points, so PyInstaller
+# cannot see them from imports alone.
+for package in ["mcp", "sse_starlette", "keyring.backends"]:
+    try:
+        hiddenimports += collect_submodules(package)
+    except Exception as exc:  # noqa: BLE001 - keep building even if an extra is missing
+        print(f"[kb-server.spec] collect_submodules({package}) skipped: {exc}")
+
 # Uvicorn selects its protocol/loop implementations dynamically.
 hiddenimports += [
     "uvicorn.logging",

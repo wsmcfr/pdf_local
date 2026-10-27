@@ -133,16 +133,22 @@ export type EmbeddingStatus = {
   source: string;
 };
 
-export type LlmStatus = {
-  ready: boolean;
-  installed: boolean;
-  models: string[];
-  target: string;
-  error?: string | null;
+export type ProviderStatusItem = {
+  id: string;
+  name: string;
+  kind: ProviderKind;
+  model: string;
+  has_key: boolean;
+};
+
+export type ProvidersStatus = {
+  configured: boolean;
+  enabled: boolean;
+  items: ProviderStatusItem[];
 };
 
 export type ModelsStatus = {
   ocr: OcrStatus;
   embedding: EmbeddingStatus;
-  llm: LlmStatus;
+  providers: ProvidersStatus;
 };
