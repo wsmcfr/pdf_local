@@ -33,12 +33,17 @@ fn api_dir() -> PathBuf {
 
 fn dev_python(api: &PathBuf) -> Command {
     // Prefer the project virtualenv (Python 3.11) so the backend dependencies are available.
-    let venv_python = api.join("../../../.venv/Scripts/python.exe");
+    // ``api`` is <repo>/services/api, so the repo root is two levels up.
+    let venv_python = api.join("../../.venv/Scripts/python.exe");
     if venv_python.exists() {
         let mut command = Command::new(venv_python);
         command.arg("run_server.py").current_dir(api);
         command
     } else {
+        eprintln!(
+            "warning: {} not found; falling back to `py -3.11` (backend dependencies may be missing)",
+            venv_python.display()
+        );
         let mut command = Command::new("py");
         command.args(["-3.11", "run_server.py"]).current_dir(api);
         command
