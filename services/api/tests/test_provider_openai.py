@@ -207,7 +207,7 @@ def test_factory_creates_openai_chat_and_rejects_other_kinds():
     assert isinstance(provider, OpenAICompatibleProvider)
     assert provider.model == "m"
 
-    config.kind = "anthropic"
+    config.kind = "unknown_kind"
     with pytest.raises(ProviderConfigError):
         factory.create_provider(config)
 
@@ -387,7 +387,7 @@ def test_test_endpoint_requires_model(client, install_fake):
 
 
 def test_unsupported_kind_is_reported_as_invalid_config(client):
-    created = create_provider(client, kind="anthropic", api_key=API_KEY)
+    created = create_provider(client, kind="gemini", api_key=API_KEY)
 
     response = client.post(f"/api/v1/providers/{created['id']}/models", headers=HEADERS)
 

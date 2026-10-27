@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import httpx
 
+from .anthropic import AnthropicProvider
 from .base import Provider, ProviderConfig
 from .errors import ProviderConfigError
 from .openai_compat import OpenAICompatibleProvider
@@ -27,6 +28,14 @@ def create_provider(
         )
     if kind == "openai_responses":
         return OpenAIResponsesProvider(
+            config.base_url,
+            config.api_key,
+            config.model,
+            transport=transport,
+            timeout=timeout,
+        )
+    if kind == "anthropic":
+        return AnthropicProvider(
             config.base_url,
             config.api_key,
             config.model,

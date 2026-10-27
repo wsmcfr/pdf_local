@@ -264,6 +264,6 @@ def test_factory_creates_openai_responses_and_rejects_other_kinds():
     assert provider.kind == "openai_responses"
     assert provider.model == "gpt-4o"
 
-    config.kind = "anthropic"
+    config.kind = "unknown_kind"
     with pytest.raises(ProviderConfigError):
         factory.create_provider(config)
