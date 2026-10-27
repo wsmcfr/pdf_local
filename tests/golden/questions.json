@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "corpus": "corpus",
+  "questions": [
+    {
+      "id": "product-warranty",
+      "question": "产品 A 的保修期是多少个月？",
+      "answerable": true,
+      "expected_files": ["product.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["24 个月"]
+    },
+    {
+      "id": "product-remote-upgrade",
+      "question": "产品 A 支持远程升级吗？",
+      "answerable": true,
+      "expected_files": ["product.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["远程升级"]
+    },
+    {
+      "id": "policy-refund-window",
+      "question": "退款申请需要在签收后多少天内提交？",
+      "answerable": true,
+      "expected_files": ["policy.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["7 天"]
+    },
+    {
+      "id": "policy-invoice",
+      "question": "发票在订单完成后几个工作日内开具？",
+      "answerable": true,
+      "expected_files": ["policy.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["3 个工作日"]
+    },
+    {
+      "id": "policy-refund-review",
+      "question": "退款审核通常需要几个工作日？",
+      "answerable": true,
+      "expected_files": ["policy.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["5 个工作日"]
+    },
+    {
+      "id": "finance-q3-revenue",
+      "question": "2024 年 Q3 营收是多少？",
+      "answerable": true,
+      "expected_files": ["finance.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["1200 万元"]
+    },
+    {
+      "id": "finance-q2-revenue",
+      "question": "2024 年 Q2 营收是多少？",
+      "answerable": true,
+      "expected_files": ["finance.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["1000 万元"]
+    },
+    {
+      "id": "finance-q3-gross-margin",
+      "question": "2024 年 Q3 毛利率是多少？",
+      "answerable": true,
+      "expected_files": ["finance.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["38%"]
+    },
+    {
+      "id": "support-hours",
+      "question": "技术支持服务时间是什么时候？",
+      "answerable": true,
+      "expected_files": ["support.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["9:00-18:00"]
+    },
+    {
+      "id": "support-emergency",
+      "question": "紧急故障多久响应？",
+      "answerable": true,
+      "expected_files": ["support.md"],
+      "expected_pages": [1],
+      "expected_answer_contains": ["2 小时"]
+    },
+    {
+      "id": "unanswerable-mars",
+      "question": "火星基地员工食堂几点开门？",
+      "answerable": false,
+      "expected_files": [],
+      "expected_pages": [],
+      "expected_answer_contains": ["资料中没有找到"]
+    },
+    {
+      "id": "unanswerable-astronomy",
+      "question": "鲸鱼座星系包含几颗行星？",
+      "answerable": false,
+      "expected_files": [],
+      "expected_pages": [],
+      "expected_answer_contains": ["资料中没有找到"]
+    }
+  ]
+}
