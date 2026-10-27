@@ -9,12 +9,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+from .ocr import ocr_page
 from .pdf import extract_pdf_pages
 from .scanner import ScannedFile, scan_folder
 
 logger = logging.getLogger(__name__)
 
 Checkpoint = Callable[[], bool]
+
+OCR_DPI = 300
+LOW_CONFIDENCE_THRESHOLD = 0.75
+
+
+class OcrFailed(Exception):
+    """The document was already marked as failed after an OCR error."""
 
 
 def utc_now() -> str:
@@ -135,18 +143,20 @@ class IngestPipeline:
             self.conn.commit()
 
         try:
-            page_count = self._write_pages(item, doc_id, now)
+            page_count, ocr_confidence = self._write_pages(item, doc_id, now)
             with self._guard():
                 self.conn.execute(
                     """
                     UPDATE documents
-                    SET page_count = ?, status = 'ready', error = NULL,
-                        indexed_at = ?, updated_at = ?
+                    SET page_count = ?, ocr_confidence = ?, status = 'ready',
+                        error = NULL, indexed_at = ?, updated_at = ?
                     WHERE id = ?
                     """,
-                    (page_count, now, now, doc_id),
+                    (page_count, ocr_confidence, now, now, doc_id),
                 )
                 self.conn.commit()
+        except OcrFailed:
+            return
         except Exception as exc:  # noqa: BLE001 - record and continue the batch
             logger.exception("failed to extract %s", item.path)
             with self._guard():
@@ -158,19 +168,58 @@ class IngestPipeline:
                 )
                 self.conn.commit()
 
-    def _write_pages(self, item: ScannedFile, doc_id: str, now: str) -> int:
+    def _write_pages(
+        self, item: ScannedFile, doc_id: str, now: str
+    ) -> tuple[int, float | None]:
         if item.path.suffix.lower() == ".pdf":
             pages = extract_pdf_pages(item.path)
-            with self._guard():
-                for page in pages:
-                    self.conn.execute(
-                        """
-                        INSERT INTO pages (document_id, page_no, text, is_scanned, created_at)
-                        VALUES (?, ?, ?, ?, ?)
-                        """,
-                        (doc_id, page.page_no, page.text, int(page.is_scanned), now),
+            rows: list[tuple] = []
+            ocr_scores: list[float] = []
+            for page in pages:
+                text = page.text
+                ocr_confidence: float | None = None
+                low_confidence = 0
+                if page.is_scanned:
+                    try:
+                        text, ocr_confidence = ocr_page(
+                            item.path, page.page_no, dpi=OCR_DPI
+                        )
+                    except Exception as exc:  # noqa: BLE001 - isolate one document
+                        logger.exception(
+                            "failed to OCR %s page %s", item.path, page.page_no
+                        )
+                        self._mark_failed(doc_id, "OCR_FAILED")
+                        raise OcrFailed from exc
+                    ocr_scores.append(ocr_confidence)
+                    low_confidence = int(
+                        ocr_confidence < LOW_CONFIDENCE_THRESHOLD
                     )
-            return len(pages)
+                rows.append(
+                    (
+                        doc_id,
+                        page.page_no,
+                        text,
+                        int(page.is_scanned),
+                        ocr_confidence,
+                        low_confidence,
+                        now,
+                    )
+                )
+
+            with self._guard():
+                self.conn.executemany(
+                    """
+                    INSERT INTO pages (
+                      document_id, page_no, text, is_scanned, ocr_confidence,
+                      low_confidence, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
+            average = (
+                round(sum(ocr_scores) / len(ocr_scores), 4) if ocr_scores else None
+            )
+            return len(pages), average
 
         text = item.path.read_text(encoding="utf-8", errors="replace")
         with self._guard():
@@ -181,4 +230,13 @@ class IngestPipeline:
                 """,
                 (doc_id, text, now),
             )
-        return 1
+        return 1, None
+
+    def _mark_failed(self, doc_id: str, error: str) -> None:
+        with self._guard():
+            self.conn.execute(
+                "UPDATE documents SET status = 'failed', error = ?, "
+                "updated_at = ? WHERE id = ?",
+                (error, utc_now(), doc_id),
+            )
+            self.conn.commit()
