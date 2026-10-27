@@ -1,4 +1,11 @@
-import { BookOpen, Compass, MessageSquare, Settings as SettingsIcon } from "lucide-react";
+import {
+  BookOpen,
+  Compass,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { NavLink } from "react-router-dom";
 
 const items = [
@@ -8,7 +15,12 @@ const items = [
   { to: "/settings", label: "设置", icon: SettingsIcon },
 ];
 
-export default function Sidebar() {
+type Props = {
+  collapsed: boolean;
+  onToggle: () => void;
+};
+
+export default function Sidebar({ collapsed, onToggle }: Props) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -25,6 +37,7 @@ export default function Sidebar() {
             to={to}
             end={to === "/"}
             className={({ isActive }) => `nav-item${isActive ? " active" : ""}`}
+            aria-label={label}
             title={label}
           >
             <Icon size={16} aria-hidden="true" />
@@ -32,7 +45,23 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      <div className="sidebar-footer">本地知识库 · 离线优先</div>
+      <div className="sidebar-footer">
+        <span className="sidebar-note">本地知识库 · 离线优先</span>
+        <button
+          type="button"
+          className="sidebar-toggle"
+          onClick={onToggle}
+          aria-label={collapsed ? "展开侧栏" : "收起侧栏"}
+          aria-expanded={!collapsed}
+          title={collapsed ? "展开侧栏" : "收起侧栏"}
+        >
+          {collapsed ? (
+            <PanelLeftOpen size={15} aria-hidden="true" />
+          ) : (
+            <PanelLeftClose size={15} aria-hidden="true" />
+          )}
+        </button>
+      </div>
     </aside>
   );
 }

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { HashRouter, Route, Routes } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import StatusBar from "./components/StatusBar";
@@ -8,11 +9,39 @@ import Onboarding from "./pages/Onboarding";
 import Settings from "./pages/Settings";
 import "./styles.css";
 
+const SIDEBAR_KEY = "local-kb.sidebar";
+
+function readSidebarCollapsed(): boolean {
+  try {
+    return window.localStorage.getItem(SIDEBAR_KEY) === "collapsed";
+  } catch {
+    return false;
+  }
+}
+
 export default function App() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        SIDEBAR_KEY,
+        sidebarCollapsed ? "collapsed" : "expanded",
+      );
+    } catch {
+      // Storage is optional; the toggle still works for this session.
+    }
+  }, [sidebarCollapsed]);
+
   return (
     <HashRouter>
-      <div className="app-shell">
-        <Sidebar />
+      <div
+        className={`app-shell${sidebarCollapsed ? " sidebar-collapsed" : ""}`}
+      >
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((value) => !value)}
+        />
         <main className="app-main">
           <Routes>
             <Route path="/" element={<Library />} />

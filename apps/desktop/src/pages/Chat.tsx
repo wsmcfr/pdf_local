@@ -7,9 +7,9 @@ import CitationPanel from "../components/CitationPanel";
 import PageViewer from "../components/PageViewer";
 
 const SUGGESTIONS = [
-  "这份资料的主要结论是什么？",
-  "把关键流程整理成步骤。",
-  "有哪些风险或注意事项？",
+  "主要结论是什么？",
+  "整理关键流程",
+  "有哪些风险？",
 ];
 
 function describeError(data: { code?: string; message: string }): string {
@@ -235,7 +235,7 @@ export default function Chat() {
               <div className="chat-empty">
                 <h2>从资料里找答案</h2>
                 <p className="muted">
-                  提问后，回答会从上到下流式显示；点击引用可在右侧查看原文页。
+                  回答会逐字显示，点击引用可在右侧核对原文。
                 </p>
                 <div className="chat-suggestions">
                   {SUGGESTIONS.map((suggestion) => (
