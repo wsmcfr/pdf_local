@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Trellis 调用图：从 trellis init 到运行时 hook</title>
+  <style>
+    :root {
+      --bg: #eef2f7;
+      --card: #ffffff;
+      --ink: #0f172a;
+      --muted: #5b6b82;
+      --line: #d8e0ea;
+      --brand: #4f46e5;
+      --brand-2: #0891b2;
+      --brand-soft: #eef2ff;
+      --warn: #b45309;
+      --shadow: 0 18px 45px rgba(15, 23, 42, 0.10);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(79, 70, 229, 0.12), transparent 34rem),
+        radial-gradient(circle at 92% 8%, rgba(8, 145, 178, 0.10), transparent 32rem),
+        var(--bg);
+      font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, -apple-system, sans-serif;
+      line-height: 1.65;
+    }
+
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .hero {
+      background:
+        linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.96) 55%, rgba(49, 46, 129, 0.94)),
+        radial-gradient(circle at 80% 0%, rgba(129, 140, 248, 0.35), transparent 24rem);
+      color: #e5e7eb;
+      padding: 42px 24px 36px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    }
+
+    .hero-inner {
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border: 1px solid rgba(165, 180, 252, 0.38);
+      border-radius: 999px;
+      color: #c7d2fe;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      background: rgba(79, 70, 229, 0.18);
+    }
+
+    .hero h1 {
+      margin: 16px 0 10px;
+      font-size: clamp(28px, 4vw, 48px);
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      font-weight: 750;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 900px;
+      color: #cbd5e1;
+      font-size: 15px;
+    }
+
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      margin-top: 22px;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+
+    .hero-meta span {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #22d3ee;
+      box-shadow: 0 0 0 4px rgba(34, 211, 238, 0.14);
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.28);
+    }
+
+    .nav-inner {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      scrollbar-width: thin;
+    }
+
+    .nav a {
+      display: inline-block;
+      padding: 13px 12px;
+      color: #475569;
+      font-size: 13px;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+    }
+
+    .nav a:hover {
+      color: var(--brand);
+      text-decoration: none;
+      border-bottom-color: rgba(79, 70, 229, 0.45);
+    }
+
+    main {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 30px 24px 70px;
+    }
+
+    .intro-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 26px;
+    }
+
+    .intro-card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      box-shadow: 0 8px 22px rgba(15, 23, 42, 0.05);
+    }
+
+    .intro-card .num {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 9px;
+      color: #fff;
+      background: linear-gradient(135deg, var(--brand), #6366f1);
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .intro-card h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+    }
+
+    .intro-card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section {
+      margin: 26px 0;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin: 0 0 12px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: clamp(20px, 2.4vw, 28px);
+      letter-spacing: -0.015em;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+      max-width: 720px;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(180deg, #ffffff, #f8fafc);
+    }
+
+    .card-bar .title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: var(--brand-soft);
+      color: #4338ca;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .diagram-wrap {
+      padding: 22px;
+      overflow-x: auto;
+      background:
+        linear-gradient(#ffffff, #ffffff) padding-box,
+        linear-gradient(90deg, rgba(79, 70, 229, 0.05), rgba(8, 145, 178, 0.05)) border-box;
+    }
+
+    .mermaid {
+      min-width: 900px;
+      margin: 0 auto;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .mermaid svg {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* The full call graph is intentionally large: keep its natural size and
+       let the wrapper scroll, instead of shrinking labels to unreadable text. */
+    .flow-diagram {
+      min-width: 1280px;
+    }
+
+    .flow-diagram svg {
+      max-width: none !important;
+    }
+
+    /* Keep the full graph inspectable without making the whole page 9000px tall. */
+    .flow-wrap {
+      max-height: 820px;
+      overflow: auto;
+    }
+
+    .flow-wrap:fullscreen {
+      max-height: none;
+    }
+
+    .bar-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid #c7d2fe;
+      background: #eef2ff;
+      color: #4338ca;
+      border-radius: 8px;
+      padding: 5px 10px;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .btn:hover {
+      background: #e0e7ff;
+      border-color: #a5b4fc;
+    }
+
+    .diagram-wrap:fullscreen {
+      background: #fff;
+      padding: 28px;
+      overflow: auto;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+      padding: 14px 20px 18px;
+      border-top: 1px dashed var(--line);
+      color: var(--muted);
+      font-size: 12px;
+      background: #fbfdff;
+    }
+
+    .legend b {
+      color: var(--ink);
+      font-weight: 650;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13.5px;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #334155;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    code {
+      padding: 1px 5px;
+      border-radius: 5px;
+      background: #f1f5f9;
+      color: #334155;
+      font-family: "Cascadia Code", Consolas, "SFMono-Regular", monospace;
+      font-size: 0.92em;
+      word-break: break-word;
+    }
+
+    .takeaways {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .takeaway {
+      display: flex;
+      gap: 12px;
+      padding: 16px 18px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+    }
+
+    .takeaway .n {
+      flex: 0 0 auto;
+      width: 24px;
+      height: 24px;
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      background: linear-gradient(135deg, #0e7490, #0891b2);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .takeaway p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .takeaway strong { color: var(--ink); }
+
+    .note {
+      margin-top: 22px;
+      padding: 14px 18px;
+      border-left: 4px solid #f59e0b;
+      border-radius: 10px;
+      background: #fffbeb;
+      color: #92400e;
+      font-size: 13px;
+    }
+
+    footer {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 0 24px 40px;
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    .error-banner {
+      display: none;
+      margin: 0 0 18px;
+      padding: 12px 16px;
+      border-radius: 10px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+      font-size: 13px;
+    }
+
+    @media (max-width: 980px) {
+      .intro-grid { grid-template-columns: 1fr; }
+      .takeaways { grid-template-columns: 1fr; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 4px; }
+    }
+
+    @media print {
+      .nav { display: none; }
+      body { background: #fff; }
+      .card { box-shadow: none; break-inside: avoid; }
+      .hero { background: #111827; }
+      main { padding-top: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">Trellis v0.6.17 · 架构分析</div>
+      <h1>从 <code style="background:rgba(255,255,255,.12);color:#e0e7ff;">trellis init</code> 到运行时 hook</h1>
+      <p>
+        一张图看清 Trellis 的初始化链路、生成物、平台 hook 注册，以及一次任务从规划、实现、检查到提交和归档的完整运行时调用关系。
+      </p>
+      <div class="hero-meta">
+        <span><i class="dot"></i>源码：<code style="background:rgba(255,255,255,.10);color:#c7d2fe;">f:\xiangfa\Trellis</code></span>
+        <span><i class="dot"></i>主流程：init → templates → hooks → task lifecycle</span>
+        <span><i class="dot"></i>Markdown 源文件：<a href="./trellis-call-graph.md" style="color:#a5b4fc;">trellis-call-graph.md</a></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="nav" aria-label="页面导航">
+    <div class="nav-inner">
+      <a href="#overview">总览</a>
+      <a href="#diagram-1">总调用图</a>
+      <a href="#diagram-2">运行时序</a>
+      <a href="#diagram-3">Channel 分支</a>
+      <a href="#files">关键文件</a>
+      <a href="#takeaways">读图要点</a>
+    </div>
+  </nav>
+
+  <main>
+    <div id="error-banner" class="error-banner">
+      Mermaid 未能加载。请确认 <code>mermaid.min.js</code> 与本 HTML 在同一目录，或保持网络连接以使用 CDN 回退。
+    </div>
+
+    <section id="overview" class="intro-grid" aria-label="总览">
+      <article class="intro-card">
+        <div class="num">1</div>
+        <h3>init：铺文件</h3>
+        <p>生成 <code>.trellis/</code> 的流程、任务、规范、脚本，并为每个选中的平台写入 skill、command、agent、hook。</p>
+      </article>
+      <article class="intro-card">
+        <div class="num">2</div>
+        <h3>hooks：注入上下文</h3>
+        <p>SessionStart 注入项目状态；UserPromptSubmit 注入阶段面包屑；PreToolUse 把 spec / research 注入子 Agent。</p>
+      </article>
+      <article class="intro-card">
+        <div class="num">3</div>
+        <h3>task：推进与收尾</h3>
+        <p>主会话负责 create / start / commit / archive；implement 与 check 子 Agent 只写代码和修复，不提交。</p>
+      </article>
+    </section>
+
+    <section id="diagram-1" class="section">
+      <div class="section-head">
+        <div>
+          <h2>图 1 · 总调用图</h2>
+          <p>从 CLI 入口到初始化、生成物、hook 注册，再到一次任务的运行时主链路。</p>
+        </div>
+        <span class="badge">flowchart</span>
+      </div>
+      <div class="card">
+        <div class="card-bar">
+          <div class="title">trellis init → runtime</div>
+          <div class="bar-actions">
+            <div class="hint">图内可上下左右滚动 · 建议全屏</div>
+            <button class="btn" data-fullscreen>全屏</button>
+          </div>
+        </div>
+        <div class="diagram-wrap flow-wrap">
+          <div class="mermaid flow-diagram">
+flowchart TD
+
+  subgraph S1["阶段 1：CLI 启动"]
+    A1["bin/trellis.js"] --> A2["dist/cli/index.js"]
+    A2 --> A3["commander 注册 trellis init"]
+    A3 --> A4["commands/init.ts: init(options)"]
+  end
+
+  subgraph S2["阶段 2：trellis init"]
+    A4 --> B1["isCwdHomedir 守卫"]
+    B1 --> B2["setWriteMode: ask / force / skip"]
+    B2 --> B3["resolveSupportedPython()"]
+    B3 --> B4["detectProjectType() / detectMonorepo()"]
+    B4 --> B5{"已有 .trellis/ ?"}
+    B5 -->|是| B6["handleReinit()"]
+    B5 -->|否| B7["选择 workflow 模板"]
+    B6 --> B7
+
+    B7 --> B8["createWorkflowStructure()"]
+    B8 --> B9["copy .trellis/scripts"]
+    B8 --> B10["写 .trellis/workflow.md"]
+    B8 --> B11["写 .trellis/config.yaml"]
+    B8 --> B12["写 .trellis/agents/*.md"]
+    B8 --> B13["写 .trellis/spec / tasks / workspace"]
+
+    B7 --> B14["configurePlatform(platformId)"]
+    B14 --> B15["collectPlatformTemplates()"]
+    B15 --> B16["resolvePlaceholders()"]
+    B16 --> B17["writeTemplateMap()"]
+
+    B7 --> B18["createRootFiles() -> AGENTS.md"]
+    B7 --> B19["initializeHashes(writtenPaths)"]
+    B7 --> B20["init_developer.py"]
+    B7 --> B21["createBootstrapTask()"]
+  end
+
+  subgraph S3["阶段 3：生成物"]
+    B9 --> C1[".trellis/scripts/*.py"]
+    B10 --> C2[".trellis/workflow.md"]
+    B11 --> C3[".trellis/config.yaml"]
+    B12 --> C4[".trellis/agents/implement.md / check.md"]
+    B13 --> C5[".trellis/spec/**/index.md · .trellis/tasks/ · .trellis/workspace/"]
+    B17 --> C6[".claude/ · settings.json / hooks / agents / skills / commands"]
+    B17 --> C7[".trae/ · hooks.json / hooks / agents / skills / commands"]
+    B17 --> C8[".agents/skills/ · 共享 skill 层"]
+    B19 --> C9[".trellis/.template-hashes.json"]
+    B20 --> C10[".trellis/workspace/developer/"]
+    B21 --> C11[".trellis/tasks/MM-DD-bootstrap/ · task.json + prd.md"]
+  end
+
+  subgraph S4["阶段 4：运行时 hook 注册"]
+    C6 --> D1["SessionStart -> .claude/hooks/session-start.py"]
+    C6 --> D2["UserPromptSubmit -> .claude/hooks/inject-workflow-state.py"]
+    C6 --> D3["PreToolUse Task/Agent -> .claude/hooks/inject-subagent-context.py"]
+    C7 --> D4[".trae/hooks.json 注册同类 hook"]
+    C8 --> D5["skills: trellis-start / brainstorm / check / channel ..."]
+  end
+
+  subgraph S5["阶段 5：一次任务的运行时"]
+    D1 --> E1["读取 workflow.md / config.yaml / tasks / workspace / spec indexes"]
+    E1 --> E2["注入 session-context + current-state + task-status"]
+    D2 --> E3["task.py current 解析 active task"]
+    E3 --> E4["读取 workflow.md 的 workflow-state:STATUS 块"]
+    E4 --> E5["每轮注入 workflow-state breadcrumb"]
+    D3 --> E6["读取 task dir + implement.jsonl / check.jsonl + prd / design / implement"]
+    E6 --> E7["改写 subagent prompt，注入 spec / research"]
+
+    E2 --> F1["主 AI 进入 Phase 1 Plan"]
+    F1 --> F2["trellis-brainstorm -> task.py create / start"]
+    F2 --> F3[".trellis/tasks/.../task.json + prd.md + session pointer"]
+    F3 --> F4["Phase 2: dispatch trellis-implement"]
+    F4 --> F5["implement 子 Agent 写代码 + lint / typecheck"]
+    E7 --> F5
+    F5 --> F6["dispatch trellis-check"]
+    F6 --> F7["check 对照 spec + prd + diff，自动修复"]
+    F7 --> F8["trellis-update-spec -> 写回 .trellis/spec"]
+    F8 --> F9["Phase 3.4 commit"]
+    F9 --> F10["/trellis:finish-work"]
+    F10 --> F11["task.py archive + add_session.py -> workspace journal"]
+  end
+
+  subgraph S6["阶段 6：多 Agent channel 分支"]
+    F4 -.->|可选：channel 模式| G1["trellis channel spawn --agent implement"]
+    G1 --> G2["读取 .trellis/agents/implement.md"]
+    G2 --> G3["worker 进程"]
+    G3 --> G4["~/.trellis/channels/project/channel/events.jsonl"]
+    G4 --> G5["主会话 send / wait / interrupt / forum"]
+    G5 --> F5
+  end
+          </div>
+        </div>
+        <div class="legend">
+          <span><b>实线</b>：直接调用 / 数据流</span>
+          <span><b>虚线</b>：可选分支</span>
+          <span><b>阶段 2</b>：初始化时写入</span>
+          <span><b>阶段 4–5</b>：运行时由平台 hook 驱动</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="diagram-2" class="section">
+      <div class="section-head">
+        <div>
+          <h2>图 2 · 一次任务的运行时序</h2>
+          <p>主会话、hook、Python 脚本、文件系统与 implement / check 子 Agent 之间的交互顺序。</p>
+        </div>
+        <span class="badge">sequence</span>
+      </div>
+      <div class="card">
+        <div class="card-bar">
+          <div class="title">SessionStart → UserPromptSubmit → PreToolUse → implement / check</div>
+          <div class="bar-actions">
+            <div class="hint">按时间从上到下阅读</div>
+            <button class="btn" data-fullscreen>全屏</button>
+          </div>
+        </div>
+        <div class="diagram-wrap">
+          <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant U as 用户
+  participant AI as 主 AI 会话
+  participant H as 平台 Hook
+  participant P as Python 脚本
+  participant FS as .trellis / 仓库
+  participant I as trellis-implement
+  participant C as trellis-check
+
+  U->>AI: 提出需求
+  AI->>H: SessionStart
+  H->>P: session-start.py
+  P->>FS: 读 workflow / config / tasks / spec
+  P-->>AI: session-context + task-status
+
+  AI->>H: UserPromptSubmit
+  H->>P: inject-workflow-state.py
+  P->>FS: task.py current + workflow.md 状态块
+  P-->>AI: workflow-state breadcrumb
+
+  AI->>P: task.py create / start
+  P->>FS: task.json + prd.md + active task pointer
+
+  AI->>H: PreToolUse Task
+  H->>P: inject-subagent-context.py
+  P->>FS: implement.jsonl + prd / design / implement
+  P-->>I: 注入上下文后的 prompt
+
+  I->>FS: 实现代码 + lint / typecheck
+  I-->>AI: 实现报告
+
+  AI->>C: dispatch trellis-check
+  C->>FS: 对照 spec + diff + 测试
+  C-->>AI: 审查结果
+
+  AI->>FS: 更新 spec + commit
+  AI->>P: task.py archive
+  AI->>P: add_session.py
+  P->>FS: workspace journal
+          </div>
+        </div>
+        <div class="legend">
+          <span><b>SessionStart</b>：项目状态、workflow 摘要、spec 索引</span>
+          <span><b>UserPromptSubmit</b>：每轮阶段面包屑</span>
+          <span><b>PreToolUse</b>：子 Agent 上下文注入</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="diagram-3" class="section">
+      <div class="section-head">
+        <div>
+          <h2>图 3 · channel 多 Agent 分支</h2>
+          <p>需要多轮对话、可中断 worker 或持久事件日志时，走 <code>trellis channel</code> 而不是普通子 Agent。</p>
+        </div>
+        <span class="badge">sequence</span>
+      </div>
+      <div class="card">
+        <div class="card-bar">
+          <div class="title">spawn → inbox → events.jsonl → done</div>
+          <div class="bar-actions">
+            <div class="hint">worker 不负责提交</div>
+            <button class="btn" data-fullscreen>全屏</button>
+          </div>
+        </div>
+        <div class="diagram-wrap">
+          <div class="mermaid">
+sequenceDiagram
+  autonumber
+  participant M as 主会话
+  participant CLI as trellis channel
+  participant L as events.jsonl
+  participant W as worker
+
+  M->>CLI: spawn --agent implement
+  CLI->>W: 读取 .trellis/agents/implement.md 并启动
+  M->>L: send Active task: path
+  W->>L: 读取 inbox
+  W->>W: 实现 / 自检
+  W->>L: 写入报告 + done
+  M->>L: wait / read
+  M->>M: 主会话负责 commit
+          </div>
+        </div>
+        <div class="legend">
+          <span><b>events.jsonl</b>：位于 <code>~/.trellis/channels/project/channel/</code></span>
+          <span><b>role card</b>：<code>.trellis/agents/*.md</code></span>
+          <span><b>提交权</b>：始终归主会话</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="files" class="section">
+      <div class="section-head">
+        <div>
+          <h2>关键文件索引</h2>
+          <p>想继续读源码时，从这些文件进入即可。</p>
+        </div>
+      </div>
+      <div class="card table-wrap">
+        <table>
+          <thead>
+            <tr><th>阶段</th><th>文件</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>CLI 入口</td><td><code>packages/cli/bin/trellis.js</code>、<code>packages/cli/src/cli/index.ts</code></td></tr>
+            <tr><td>init 主流程</td><td><code>packages/cli/src/commands/init.ts</code></td></tr>
+            <tr><td><code>.trellis/</code> 结构</td><td><code>packages/cli/src/configurators/workflow.ts</code></td></tr>
+            <tr><td>平台模板收集</td><td><code>packages/cli/src/configurators/</code> 下各平台文件、<code>configurators/shared.ts</code></td></tr>
+            <tr><td>模板发现</td><td><code>packages/cli/src/templates/common/index.ts</code></td></tr>
+            <tr><td>模板哈希</td><td><code>packages/cli/src/utils/template-hash.ts</code>、<code>.trellis/.template-hashes.json</code></td></tr>
+            <tr><td>任务 / 会话脚本</td><td><code>.trellis/scripts/task.py</code>、<code>get_context.py</code>、<code>add_session.py</code>、<code>common/*</code></td></tr>
+            <tr><td>运行时 hooks</td><td><code>.claude/hooks/session-start.py</code>、<code>inject-workflow-state.py</code>、<code>inject-subagent-context.py</code></td></tr>
+            <tr><td>流程唯一事实源</td><td><code>.trellis/workflow.md</code></td></tr>
+            <tr><td>平台子 Agent</td><td><code>.claude/agents/trellis-implement.md</code>、<code>trellis-check.md</code>、<code>trellis-research.md</code></td></tr>
+            <tr><td>Channel 角色卡</td><td><code>.trellis/agents/implement.md</code>、<code>check.md</code>、<code>architect.md</code>、<code>plan.md</code>、<code>research.md</code></td></tr>
+            <tr><td>Channel 运行时</td><td><code>packages/core/src/channel/</code>、<code>packages/cli/src/commands/channel/</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="takeaways" class="section">
+      <div class="section-head">
+        <div>
+          <h2>读图要点</h2>
+          <p>这七条是理解 Trellis 运行时行为的关键。</p>
+        </div>
+      </div>
+      <div class="takeaways">
+        <div class="takeaway"><span class="n">1</span><p><strong>init 只负责“铺文件”</strong>：<code>.trellis/</code> 提供流程、任务、规范、脚本；平台目录提供 skill、command、agent、hook 注册。</p></div>
+        <div class="takeaway"><span class="n">2</span><p><strong>workflow.md 是流程唯一事实源</strong>：每轮提示由 hook 解析 <code>[workflow-state:STATUS]</code> 块得到，不是硬编码在脚本里。</p></div>
+        <div class="takeaway"><span class="n">3</span><p><strong>SessionStart 管“开局”</strong>：注入项目状态、workflow 摘要、spec 索引、当前任务状态。</p></div>
+        <div class="takeaway"><span class="n">4</span><p><strong>UserPromptSubmit 管“当前阶段”</strong>：解析 active task 的 <code>task.json.status</code>，给出 <code>no_task / planning / in_progress</code> 面包屑。</p></div>
+        <div class="takeaway"><span class="n">5</span><p><strong>PreToolUse 管“子 Agent 上下文”</strong>：按 <code>implement.jsonl</code> / <code>check.jsonl</code> 把 spec、research、prd、design、implement 注入子 Agent prompt。</p></div>
+        <div class="takeaway"><span class="n">6</span><p><strong>子 Agent 不提交</strong>：<code>trellis-implement</code> / <code>trellis-check</code> 被禁止 <code>git commit</code> / <code>push</code> / <code>merge</code>，提交由主会话在 Phase 3.4 统一做。</p></div>
+        <div class="takeaway"><span class="n">7</span><p><strong>channel 是重型分支</strong>：需要多轮对话、可中断 worker、持久事件日志时才用；普通任务直接走平台子 Agent。</p></div>
+      </div>
+    </section>
+
+    <div class="note">
+      说明：图中的 <code>.claude/</code> 只是 Claude Code 的示例路径；同一套 Python hook 会被复制到 Trae、Cursor、Codex 等平台的对应目录，并由各平台的 <code>settings.json</code> / <code>hooks.json</code> 注册。
+    </div>
+  </main>
+
+  <footer>
+    <p>基于 <code>f:\xiangfa\Trellis</code>（v0.6.17）静态分析生成。Markdown 源文件：<a href="./trellis-call-graph.md">trellis-call-graph.md</a>。</p>
+  </footer>
+
+  <!-- 本地 Mermaid；若缺失则回退 CDN。 -->
+  <script src="./mermaid.min.js"></script>
+  <script>
+    document.querySelectorAll('[data-fullscreen]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var wrap = btn.closest('.card').querySelector('.diagram-wrap');
+        if (!wrap) return;
+        if (wrap.requestFullscreen) {
+          wrap.requestFullscreen().catch(function () {});
+        }
+      });
+    });
+  </script>
+  <script>
+    (function () {
+      if (!window.mermaid) {
+        var fallback = document.createElement('script');
+        fallback.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+        fallback.onload = init;
+        fallback.onerror = showError;
+        document.head.appendChild(fallback);
+      } else {
+        init();
+      }
+
+      function showError() {
+        var banner = document.getElementById('error-banner');
+        if (banner) banner.style.display = 'block';
+      }
+
+      function init() {
+        if (!window.mermaid) {
+          showError();
+          return;
+        }
+        try {
+          mermaid.initialize({
+            startOnLoad: false,
+            theme: 'base',
+            securityLevel: 'loose',
+            themeVariables: {
+              fontFamily: '"Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif',
+              fontSize: '14px',
+              primaryColor: '#eef2ff',
+              primaryTextColor: '#0f172a',
+              primaryBorderColor: '#818cf8',
+              lineColor: '#64748b',
+              secondaryColor: '#f8fafc',
+              tertiaryColor: '#ffffff',
+              clusterBkg: '#f8fafc',
+              clusterBorder: '#cbd5e1',
+              edgeLabelBackground: '#ffffff',
+              actorBkg: '#eef2ff',
+              actorBorder: '#818cf8',
+              actorTextColor: '#0f172a',
+              signalColor: '#475569',
+              signalTextColor: '#0f172a',
+              noteBkgColor: '#fef3c7',
+              noteBorderColor: '#f59e0b'
+            },
+            flowchart: {
+              curve: 'linear',
+              nodeSpacing: 24,
+              rankSpacing: 34,
+              padding: 12,
+              useMaxWidth: false
+            },
+            sequence: {
+              useMaxWidth: true,
+              wrap: true,
+              mirrorActors: false,
+              messageFontSize: 13,
+              actorFontSize: 14,
+              noteFontSize: 13
+            }
+          });
+          mermaid.run({ querySelector: '.mermaid' }).then(function () {
+            var wrap = document.querySelector('.flow-wrap');
+            if (wrap) {
+              wrap.scrollLeft = Math.max(0, (wrap.scrollWidth - wrap.clientWidth) / 2);
+              wrap.scrollTop = 0;
+            }
+          }).catch(function (err) {
+            console.error('Mermaid render failed:', err);
+            showError();
+          });
+        } catch (err) {
+          console.error('Mermaid init failed:', err);
+          showError();
+        }
+      }
+    })();
+  </script>
+</body>
+</html>
