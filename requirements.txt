@@ -1,0 +1,14 @@
+fastapi==0.115.*
+uvicorn[standard]==0.34.*
+pydantic==2.*
+pydantic-settings==2.*
+httpx==0.28.*
+PyMuPDF==1.25.*
+rapidocr_onnxruntime==1.4.*
+sentence-transformers==3.*
+faiss-cpu==1.9.*
+jieba==0.42.*
+numpy==2.*
+Pillow==11.*
+pytest==8.*
+pytest-asyncio==0.25.*
