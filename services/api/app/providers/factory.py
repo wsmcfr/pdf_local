@@ -1,0 +1,27 @@
+"""Provider factory: turn a ``ProviderConfig`` into a concrete adapter."""
+
+from __future__ import annotations
+
+import httpx
+
+from .base import Provider, ProviderConfig
+from .errors import ProviderConfigError
+from .openai_compat import OpenAICompatibleProvider
+
+
+def create_provider(
+    config: ProviderConfig,
+    *,
+    transport: httpx.AsyncBaseTransport | None = None,
+    timeout: float = 60.0,
+) -> Provider:
+    kind = (config.kind or "").strip()
+    if kind == "openai_chat":
+        return OpenAICompatibleProvider(
+            config.base_url,
+            config.api_key,
+            config.model,
+            transport=transport,
+            timeout=timeout,
+        )
+    raise ProviderConfigError(f"unsupported provider kind: {kind or '<empty>'}")

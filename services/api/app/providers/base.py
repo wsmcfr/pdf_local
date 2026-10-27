@@ -34,6 +34,17 @@ class ModelInfo:
     name: str | None = None
 
 
+@dataclass
+class ProviderConfig:
+    id: str
+    name: str
+    kind: str
+    base_url: str
+    model: str = ""
+    api_key: str | None = None
+    extra: dict = field(default_factory=dict)
+
+
 class Provider(Protocol):
     async def list_models(self) -> list[ModelInfo]: ...
 

@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 
-from ..providers import secret_store
+from ..providers import errors, factory, registry, secret_store
+from ..providers.base import ChatMessage, ChatRequest
 
 router = APIRouter()
 
@@ -17,8 +20,6 @@ ALLOWED_KINDS = {
     "gemini",
     "custom",
 }
-
-ADAPTER_NOT_READY = "ADAPTER_NOT_READY"
 
 
 def _now() -> str:
@@ -105,6 +106,57 @@ def _remove_key(provider_id: str) -> None:
         secret_store.delete_secret(secret_store.provider_key_name(provider_id))
     except Exception as exc:  # noqa: BLE001 - never echo the secret back
         raise HTTPException(status_code=500, detail="KEYRING_ERROR") from exc
+
+
+def _error_code(exc: Exception) -> str:
+    if isinstance(exc, errors.ProviderAuthError):
+        return "PROVIDER_AUTH_ERROR"
+    if isinstance(exc, errors.ProviderRateLimitError):
+        return "PROVIDER_RATE_LIMIT"
+    if isinstance(exc, errors.ProviderTimeoutError):
+        return "PROVIDER_TIMEOUT"
+    if isinstance(exc, errors.ProviderNotFoundError):
+        return "PROVIDER_ENDPOINT_NOT_FOUND"
+    if isinstance(exc, errors.ProviderConfigError):
+        return "INVALID_PROVIDER_CONFIG"
+    return "PROVIDER_ERROR"
+
+
+def _error_status(exc: Exception) -> int:
+    if isinstance(exc, errors.ProviderRateLimitError):
+        return 429
+    if isinstance(exc, errors.ProviderTimeoutError):
+        return 504
+    if isinstance(exc, errors.ProviderConfigError):
+        return 400
+    return 502
+
+
+def _provider_error(exc: errors.ProviderError) -> HTTPException:
+    return HTTPException(status_code=_error_status(exc), detail=_error_code(exc))
+
+
+def _load_config(row):
+    try:
+        api_key = registry.load_key(row["id"])
+    except Exception as exc:  # noqa: BLE001 - never echo the secret back
+        raise HTTPException(status_code=500, detail="KEYRING_ERROR") from exc
+
+    config = registry.config_from_row(row, api_key)
+    if not config.base_url.strip():
+        raise HTTPException(status_code=400, detail="PROVIDER_NOT_CONFIGURED")
+    if not config.api_key:
+        raise HTTPException(status_code=400, detail="PROVIDER_KEY_REQUIRED")
+    return config
+
+
+def _build_provider(config):
+    try:
+        return factory.create_provider(config)
+    except errors.ProviderConfigError as exc:
+        raise HTTPException(
+            status_code=400, detail="INVALID_PROVIDER_CONFIG"
+        ) from exc
 
 
 @router.get("/providers")
@@ -247,13 +299,69 @@ def put_provider_key(provider_id: str, payload: dict, request: Request) -> dict:
     return {"ok": True, "has_key": True}
 
 
+def _cache_models(request: Request, provider_id: str, models: list) -> None:
+    payload = [
+        {"id": model.id, "name": model.name or model.id} for model in models
+    ]
+    conn = request.app.state.db
+    conn.execute(
+        "INSERT INTO model_cache(provider_id, models_json, fetched_at) "
+        "VALUES (?, ?, ?) "
+        "ON CONFLICT(provider_id) DO UPDATE SET "
+        "models_json = excluded.models_json, fetched_at = excluded.fetched_at",
+        (provider_id, json.dumps(payload, ensure_ascii=False), _now()),
+    )
+    conn.commit()
+
+
 @router.post("/providers/{provider_id}/models")
-def probe_models(provider_id: str, request: Request) -> dict:
-    _get_row(provider_id, request)
-    raise HTTPException(status_code=501, detail=ADAPTER_NOT_READY)
+async def probe_models(provider_id: str, request: Request) -> dict:
+    row = _get_row(provider_id, request)
+    config = _load_config(row)
+    provider = _build_provider(config)
+
+    try:
+        models = await provider.list_models()
+    except errors.ProviderError as exc:
+        raise _provider_error(exc) from exc
+
+    _cache_models(request, provider_id, models)
+    return {
+        "models": [
+            {"id": model.id, "name": model.name or model.id} for model in models
+        ]
+    }
 
 
-@router.post("/providers/{provider_id}/test")
-def test_provider(provider_id: str, request: Request) -> dict:
-    _get_row(provider_id, request)
-    raise HTTPException(status_code=501, detail=ADAPTER_NOT_READY)
+@router.post("/providers/{provider_id}/test", response_model=None)
+async def test_provider(provider_id: str, request: Request) -> dict | JSONResponse:
+    row = _get_row(provider_id, request)
+    config = _load_config(row)
+    if not config.model.strip():
+        raise HTTPException(status_code=400, detail="MODEL_REQUIRED")
+    provider = _build_provider(config)
+
+    chat_request = ChatRequest(
+        model=config.model,
+        messages=[ChatMessage(role="user", content="ping")],
+        stream=True,
+    )
+    started = time.perf_counter()
+    try:
+        async for chunk in provider.stream_chat(chat_request):
+            if chunk.type == "error":
+                raise errors.ProviderError(chunk.error or "provider error")
+    except errors.ProviderError as exc:
+        latency_ms = round((time.perf_counter() - started) * 1000, 1)
+        return JSONResponse(
+            status_code=_error_status(exc),
+            content={
+                "ok": False,
+                "model": config.model,
+                "latency_ms": latency_ms,
+                "error": _error_code(exc),
+            },
+        )
+
+    latency_ms = round((time.perf_counter() - started) * 1000, 1)
+    return {"ok": True, "model": config.model, "latency_ms": latency_ms}

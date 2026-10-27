@@ -245,15 +245,15 @@ def test_unknown_provider_returns_404(client):
     )
 
 
-def test_models_and_test_are_not_ready_until_adapters_land(client):
+def test_models_and_test_require_key(client):
     created = create_provider(client)
 
     for path in ("models", "test"):
         response = client.post(
             f"/api/v1/providers/{created['id']}/{path}", headers=HEADERS
         )
-        assert response.status_code == 501
-        assert response.json()["detail"] == "ADAPTER_NOT_READY"
+        assert response.status_code == 400
+        assert response.json()["detail"] == "PROVIDER_KEY_REQUIRED"
 
 
 def test_keyring_failure_does_not_leak_or_persist(client, monkeypatch):
