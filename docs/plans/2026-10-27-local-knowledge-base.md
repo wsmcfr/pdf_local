@@ -1,5 +1,7 @@
 # 本地知识库问答桌面应用 Implementation Plan
 
+> **已被 v2 取代**：v2 计划见 `2026-10-27-local-knowledge-base-v2.md`。本文保留为 v1 历史记录。
+
 > **For Codex/Trae:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** 构建一个完全本地的 Windows 桌面应用：导入本地 PDF/Markdown/TXT，OCR 扫描件，建立关键词 + 向量混合索引，并给出带原文页码引用的问答。
