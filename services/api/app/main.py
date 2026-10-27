@@ -1,3 +1,4 @@
+import json
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -5,14 +6,17 @@ from pathlib import Path
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .api.ask import router as ask_router
 from .api.deps import require_token
 from .api.documents import router as documents_router
 from .api.health import router as health_router
 from .api.jobs import router as jobs_router
+from .api.settings import DEFAULTS
 from .api.settings import router as settings_router
 from .db import connect, init_db
 from .index.vector_store import VectorStore
 from .jobs.runner import JobRunner
+from .qa.retriever import HybridRetriever
 
 
 @asynccontextmanager
@@ -22,8 +26,14 @@ async def lifespan(app: FastAPI):
     conn = connect(data_dir / "app.db")
     init_db(conn)
     app.state.db = conn
+    rows = conn.execute("SELECT key, value FROM settings").fetchall()
+    app.state.settings = {
+        **DEFAULTS,
+        **{row["key"]: json.loads(row["value"]) for row in rows},
+    }
     vector_store = VectorStore(data_dir / "vectors.faiss")
     app.state.vector_store = vector_store
+    app.state.retriever = HybridRetriever(conn, vector_store)
     app.state.runner = JobRunner(conn, vector_store)
     app.state.runner.start()
     try:
@@ -64,6 +74,11 @@ app.include_router(
 )
 app.include_router(
     documents_router,
+    prefix="/api/v1",
+    dependencies=[Depends(require_token)],
+)
+app.include_router(
+    ask_router,
     prefix="/api/v1",
     dependencies=[Depends(require_token)],
 )
