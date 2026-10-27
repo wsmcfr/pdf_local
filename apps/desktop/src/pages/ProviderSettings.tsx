@@ -95,6 +95,8 @@ function describeError(cause: unknown): string {
     PROVIDER_TIMEOUT: "上游响应超时，请稍后重试。",
     PROVIDER_RATE_LIMIT: "上游限流，请稍后重试。",
     PROVIDER_ENDPOINT_NOT_FOUND: "接口地址不存在，请检查 Base URL。",
+    PROVIDER_ERROR: "上游服务返回错误。若使用 OpenAI Responses 失败，请尝试把类型改为 OpenAI Chat Completions。",
+    UPSTREAM_ERROR: "上游服务返回错误。若使用 OpenAI Responses 失败，请尝试把类型改为 OpenAI Chat Completions。",
     MODEL_REQUIRED: "请先选择模型。",
     KEYRING_ERROR: "无法访问系统凭据存储，密钥未保存。",
     PROVIDER_NOT_FOUND: "找不到该 Provider。",
@@ -108,6 +110,7 @@ export default function ProviderSettings() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [presetId, setPresetId] = useState("");
   const [models, setModels] = useState<ProviderModel[]>([]);
+  const [manualModel, setManualModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [probing, setProbing] = useState(false);
@@ -146,6 +149,7 @@ export default function ProviderSettings() {
     setDraft(EMPTY_DRAFT);
     setPresetId("");
     setModels([]);
+    setManualModel(false);
     setError("");
     setMessage("");
   }
@@ -154,6 +158,7 @@ export default function ProviderSettings() {
     setDraft(draftFromProvider(provider));
     setPresetId("");
     setModels([]);
+    setManualModel(false);
     setError("");
     setMessage("");
   }
@@ -170,6 +175,7 @@ export default function ProviderSettings() {
       model: preset.default_model,
     }));
     setModels([]);
+    setManualModel(false);
     setMessage("");
   }
 
@@ -216,6 +222,7 @@ export default function ProviderSettings() {
     try {
       const detected = await probeProviderModels(draft.id);
       setModels(detected);
+      setManualModel(false);
       setMessage(
         detected.length > 0
           ? `探测到 ${detected.length} 个模型。`
@@ -380,6 +387,10 @@ export default function ProviderSettings() {
                 </option>
               ))}
             </select>
+            <small className="muted">
+              大多数 OpenAI 兼容服务（DeepSeek、Qwen、Kimi、micuapi 等）使用
+              Chat Completions；只有明确支持 `/responses` 的服务才选 OpenAI Responses。
+            </small>
           </label>
 
           <label className="field">
@@ -406,19 +417,51 @@ export default function ProviderSettings() {
 
           <label className="field">
             <span>默认模型</span>
-            <input
-              list="provider-model-options"
-              value={draft.model}
-              onChange={(event) => update("model", event.target.value)}
-              placeholder="例如 deepseek-chat"
-            />
-            <datalist id="provider-model-options">
-              {models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name}
-                </option>
-              ))}
-            </datalist>
+            {models.length > 0 && !manualModel ? (
+              <select
+                value={draft.model}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  if (value === "__manual__") {
+                    setManualModel(true);
+                    return;
+                  }
+                  update("model", value);
+                }}
+              >
+                {!draft.model && <option value="">请选择模型</option>}
+                {!models.some((model) => model.id === draft.model) &&
+                  draft.model && (
+                    <option value={draft.model}>{draft.model}（当前）</option>
+                  )}
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name || model.id}
+                  </option>
+                ))}
+                <option value="__manual__">手动输入模型…</option>
+              </select>
+            ) : (
+              <input
+                value={draft.model}
+                onChange={(event) => update("model", event.target.value)}
+                placeholder="例如 deepseek-chat"
+              />
+            )}
+            {models.length > 0 && manualModel && (
+              <button
+                type="button"
+                className="link-button"
+                onClick={() => setManualModel(false)}
+              >
+                从探测结果选择
+              </button>
+            )}
+            <small className="muted">
+              {models.length > 0
+                ? "从探测结果选择，或手动输入模型名。"
+                : "先保存并探测模型，或手动输入模型名。"}
+            </small>
           </label>
 
           <div className="header-actions">
