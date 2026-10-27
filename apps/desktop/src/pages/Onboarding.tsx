@@ -1,31 +1,26 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { FolderOpen } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { pickDirectory, startScan } from "../api/scan";
-import type { Health, Settings as SettingsPayload } from "../api/types";
+import type { ModelsStatus, Settings as SettingsPayload } from "../api/types";
 
 export default function Onboarding() {
   const [settings, setSettings] = useState<SettingsPayload | null>(null);
-  const [health, setHealth] = useState<Health | null>(null);
+  const [models, setModels] = useState<ModelsStatus | null>(null);
+  const [modelsError, setModelsError] = useState("");
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([apiFetch("/settings"), apiFetch("/health")])
-      .then(async ([settingsResponse, healthResponse]) => {
-        if (!settingsResponse.ok || !healthResponse.ok) {
-          throw new Error("local service unavailable");
-        }
-        const [settingsData, healthData] = await Promise.all([
-          settingsResponse.json() as Promise<SettingsPayload>,
-          healthResponse.json() as Promise<Health>,
-        ]);
+    apiFetch("/settings")
+      .then(async (response) => {
+        if (!response.ok) throw new Error("local service unavailable");
+        const data = (await response.json()) as SettingsPayload;
         if (cancelled) return;
-        setSettings(settingsData);
-        setHealth(healthData);
+        setSettings(data);
       })
       .catch(() => {
         if (!cancelled) setError("无法连接本地服务，请先启动应用。");
@@ -34,6 +29,28 @@ export default function Onboarding() {
       cancelled = true;
     };
   }, []);
+
+  const loadModels = useCallback(() => {
+    let cancelled = false;
+    apiFetch("/models/status")
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return (await response.json()) as ModelsStatus;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setModels(data);
+        setModelsError("");
+      })
+      .catch(() => {
+        if (!cancelled) setModelsError("无法读取本地模型状态，请确认本地服务已启动。");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => loadModels(), [loadModels]);
 
   async function beginImport() {
     setError("");
@@ -49,6 +66,10 @@ export default function Onboarding() {
       setImporting(false);
     }
   }
+
+  const modelsReady = Boolean(
+    models?.ocr.ready && models?.embedding.ready && models?.llm.ready,
+  );
 
   return (
     <section className="page onboarding">
@@ -78,19 +99,79 @@ export default function Onboarding() {
           <div>
             <h2>本地模型</h2>
             <p className="muted small">
-              问答由本机 Ollama 提供，不把资料发送到外部服务。
+              问答由本机 Ollama 提供，资料与模型都不发送到外部服务。
             </p>
-            {health === null ? (
-              <p className="muted small">正在检查 Ollama 状态…</p>
-            ) : health.ollama ? (
-              <p className="notice ok small">Ollama 已连接，可以开始提问。</p>
-            ) : (
-              <div className="notice warn small">
-                <p>未检测到 Ollama。请安装并启动 Ollama，然后准备模型：</p>
-                <pre>ollama pull qwen2.5:7b</pre>
-                <p>模型下载与离线包管理将在后续版本中提供。</p>
-              </div>
+
+            {modelsError && <p className="notice error small">{modelsError}</p>}
+            {models === null && !modelsError && (
+              <p className="muted small">正在检查本地模型…</p>
             )}
+
+            {models && (
+              <>
+                <p className="muted small">
+                  <span
+                    className={`status-dot ${models.ocr.ready ? "ok" : "bad"}`}
+                  />
+                  OCR（RapidOCR）：{models.ocr.ready ? "就绪（wheel 自带模型）" : "不可用"}
+                </p>
+                <p className="muted small">
+                  <span
+                    className={`status-dot ${models.embedding.ready ? "ok" : "bad"}`}
+                  />
+                  Embedding（BGE-M3）：{models.embedding.ready ? "就绪" : "未下载"}
+                </p>
+                <p className="muted small">
+                  <span
+                    className={`status-dot ${models.llm.ready ? "ok" : "bad"}`}
+                  />
+                  LLM（{models.llm.target}）：
+                  {models.llm.ready
+                    ? "就绪"
+                    : models.llm.installed
+                      ? "Ollama 已连接，未找到该模型"
+                      : "Ollama 未启动"}
+                </p>
+
+                {modelsReady ? (
+                  <p className="notice ok small">本地模型已就绪，可以离线问答。</p>
+                ) : (
+                  <div className="notice warn small">
+                    <p>应用不会自动下载模型，请手动准备未就绪的部分：</p>
+                    {!models.ocr.ready && (
+                      <p>OCR 不可用：请重新安装 rapidocr_onnxruntime 依赖。</p>
+                    )}
+                    {!models.embedding.ready && (
+                      <>
+                        <p>Embedding（约 2.2GB）：</p>
+                        <pre>.\\.venv\\Scripts\\python.exe scripts\\download_embedding.py</pre>
+                        <p className="muted small">保存位置：{models.embedding.path}</p>
+                      </>
+                    )}
+                    {!models.llm.installed && (
+                      <p>
+                        Ollama 未安装或未启动：请从 https://ollama.com/download
+                        安装并启动后刷新状态。
+                      </p>
+                    )}
+                    {models.llm.installed && !models.llm.ready && (
+                      <>
+                        <p>LLM：</p>
+                        <pre>ollama pull {models.llm.target}</pre>
+                      </>
+                    )}
+                    <p>也可以一次执行（会实际下载模型）：</p>
+                    <pre>.\\scripts\\download-models.ps1</pre>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="header-actions">
+              <button type="button" className="link-button" onClick={() => loadModels()}>
+                刷新模型状态
+              </button>
+            </div>
           </div>
         </article>
 

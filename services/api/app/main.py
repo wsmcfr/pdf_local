@@ -11,6 +11,7 @@ from .api.deps import require_token
 from .api.documents import router as documents_router
 from .api.health import router as health_router
 from .api.jobs import router as jobs_router
+from .api.models import router as models_router
 from .api.settings import DEFAULTS
 from .api.settings import router as settings_router
 from .db import connect, init_db
@@ -23,6 +24,12 @@ from .qa.retriever import HybridRetriever
 async def lifespan(app: FastAPI):
     data_dir = Path(os.environ.get("KB_DATA_DIR") or (Path.home() / ".local-kb"))
     data_dir.mkdir(parents=True, exist_ok=True)
+    app.state.data_dir = data_dir
+    # Prefer a locally downloaded BGE-M3 copy; embeddings falls back to the hub
+    # model name when this directory is absent.
+    previous_embedding_path = os.environ.get("KB_EMBEDDING_MODEL_PATH")
+    if not previous_embedding_path:
+        os.environ["KB_EMBEDDING_MODEL_PATH"] = str(data_dir / "models" / "bge-m3")
     conn = connect(data_dir / "app.db")
     init_db(conn)
     app.state.db = conn
@@ -41,6 +48,8 @@ async def lifespan(app: FastAPI):
     finally:
         app.state.runner.stop()
         conn.close()
+        if previous_embedding_path is None:
+            os.environ.pop("KB_EMBEDDING_MODEL_PATH", None)
 
 
 app = FastAPI(title="Local KB", version="0.1.0", lifespan=lifespan)
@@ -79,6 +88,11 @@ app.include_router(
 )
 app.include_router(
     ask_router,
+    prefix="/api/v1",
+    dependencies=[Depends(require_token)],
+)
+app.include_router(
+    models_router,
     prefix="/api/v1",
     dependencies=[Depends(require_token)],
 )

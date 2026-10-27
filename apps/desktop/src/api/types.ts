@@ -64,3 +64,31 @@ export type Health = {
   ollama: boolean;
   version: string;
 };
+
+export type OcrStatus = {
+  ready: boolean;
+  engine?: string;
+  models?: string[];
+  error?: string | null;
+};
+
+export type EmbeddingStatus = {
+  ready: boolean;
+  model: string;
+  path: string;
+  source: string;
+};
+
+export type LlmStatus = {
+  ready: boolean;
+  installed: boolean;
+  models: string[];
+  target: string;
+  error?: string | null;
+};
+
+export type ModelsStatus = {
+  ocr: OcrStatus;
+  embedding: EmbeddingStatus;
+  llm: LlmStatus;
+};

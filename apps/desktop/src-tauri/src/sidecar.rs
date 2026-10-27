@@ -59,6 +59,12 @@ pub fn spawn(app: &AppHandle) -> Result<(ServerInfo, Child), String> {
             .join("binaries")
             .join("kb-server")
             .join("kb-server.exe");
+        if !exe.exists() {
+            return Err(format!(
+                "kb-server sidecar not found at {} (run scripts/build-sidecar.ps1 before packaging)",
+                exe.display()
+            ));
+        }
         Command::new(exe)
     };
 

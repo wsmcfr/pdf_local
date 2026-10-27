@@ -16,6 +16,13 @@ data/
 models/
 *.log
 
+# PyInstaller / sidecar build artifacts (keep services/api/kb-server.spec)
+services/api/build/
+# Keep the resource directory present so `tauri build`/`cargo check` can resolve
+# the `binaries/kb-server/**/*` glob before the sidecar is built.
+apps/desktop/src-tauri/binaries/kb-server/*
+!apps/desktop/src-tauri/binaries/kb-server/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
