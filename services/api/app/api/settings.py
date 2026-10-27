@@ -11,8 +11,11 @@ DEFAULTS = {
     "embedding_provider_id": "",
     "embedding_model": "BAAI/bge-m3",
     "llm_model": "qwen2.5:7b",
+    "llm_provider_id": "",
     "context_chunks": 8,
     "offline_mode": True,
+    "gateway_enabled": False,
+    "gateway_rag_mode": "auto",
 }
 
 
