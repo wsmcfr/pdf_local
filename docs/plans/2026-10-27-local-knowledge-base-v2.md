@@ -2,7 +2,7 @@
 
 > **For Codex/Trae:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** 把已完成的本地知识库改造成“本地知识库 + AI 网关”：不再依赖 Ollama/本地 LLM；支持外部 OpenAI/Claude/Gemini/Custom API；同时暴露 OpenAI、Claude 兼容接口和 MCP 工具，供 Trae 等客户端连接。
+**Goal:** 把已完成的本地知识库改造成“本地知识库 + AI 网关”：不再依赖 Ollama/本地 LLM；支持外部 OpenAI Chat Completions、OpenAI Responses、Claude、Gemini、Custom API；同时暴露 OpenAI Chat Completions、OpenAI Responses、Claude 兼容接口和 MCP 工具，供 Trae 等客户端连接。
 
 **Architecture:** FastAPI sidecar 内部增加 Provider 适配层和入站协议层；检索/OCR/FTS/FAISS 复用现有实现；embedding 默认本地 BGE-M3，可选外部 API，失败回退 FTS；API 密钥存 OS keyring。
 
@@ -51,7 +51,7 @@ def test_create_provider_hides_key(client, monkeypatch):
         headers=HEADERS,
         json={
             "name": "DeepSeek",
-            "kind": "openai",
+            "kind": "openai_chat",
             "base_url": "https://api.deepseek.com/v1",
             "model": "deepseek-chat",
             "api_key": "sk-test",
@@ -186,7 +186,7 @@ git commit -m "feat: add provider config and keyring storage"
 
 ---
 
-## Task V2-2: OpenAI-compatible 适配器
+## Task V2-2: OpenAI Chat Completions 适配器
 
 **Files:**
 - Create: `services/api/app/providers/openai_compat.py`
@@ -237,7 +237,7 @@ class OpenAICompatibleProvider:
 
 **Step 3: 工厂**
 
-`factory.py` 按 `kind` 返回 provider 实例；V2-2 先支持 `openai`，后续 Task 补 `anthropic`/`gemini`/`custom`。
+`factory.py` 按 `kind` 返回 provider 实例；V2-2 先支持 `openai_chat`，后续 Task 补 `openai_responses`/`anthropic`/`gemini`/`custom`。
 
 **Step 4: 测试**
 
@@ -250,7 +250,50 @@ $env:PYTHONPATH="services/api"
 
 ```powershell
 git add services/api/app/providers services/api/tests/test_provider_openai.py
-git commit -m "feat: add openai-compatible provider adapter"
+git commit -m "feat: add openai chat completions provider adapter"
+```
+
+---
+
+## Task V2-2b: OpenAI Responses 适配器
+
+**Files:**
+- Create: `services/api/app/providers/openai_responses.py`
+- Create: `services/api/tests/test_provider_openai_responses.py`
+- Modify: `services/api/app/providers/factory.py`
+
+**要点：**
+
+- `POST {base_url}/responses`
+- 请求：
+  - `model`
+  - `input`：字符串或 messages 数组
+  - `instructions`：system 内容
+  - `stream`
+  - `max_output_tokens`
+  - `temperature`
+- 非流式：读取 `output[].content[].text`，兼容 `output_text`
+- 流式事件：
+  - `response.output_text.delta` → 文本增量
+  - `response.completed` → done + usage
+  - `response.failed` → error
+  - 其他事件忽略
+- 模型探测：复用 OpenAI `GET /models`
+- Embedding：可复用 `POST /embeddings`，失败返回 `None`
+- 错误映射与 V2-2 一致
+
+**测试：**
+
+- mock 非流式 `output`
+- mock 流式 `response.output_text.delta` + `response.completed`
+- mock `response.failed`
+- 401 错误
+
+**Commit:**
+
+```powershell
+git add services/api/app/providers services/api/tests/test_provider_openai_responses.py
+git commit -m "feat: add openai responses provider adapter"
 ```
 
 ---
@@ -343,7 +386,7 @@ git commit -m "feat: add gemini provider adapter"
 - SSE：按 `data:` 行解析，结束标记可配置
 - 模型探测：有 `models_url` 才调用；失败返回空列表
 - `presets.py` 只放常用 base URL/kind，不写死协议：
-  - OpenAI、DeepSeek、Qwen、Kimi、GLM、MiniMax、SiliconFlow、OpenRouter
+  - OpenAI Chat Completions、OpenAI Responses、DeepSeek、Qwen、Kimi、GLM、MiniMax、SiliconFlow、OpenRouter
 
 **测试：** mock 自定义 JSON 响应 + SSE + 鉴权方式 `bearer`/`x-api-key`/`query`。
 
@@ -400,7 +443,7 @@ git commit -m "feat: support local, external and fts embedding modes"
 
 ---
 
-## Task V2-7: 入站 OpenAI 兼容 API + RAG
+## Task V2-7: 入站 OpenAI Chat Completions API + RAG
 
 **Files:**
 - Create: `services/api/app/api/inbound_openai.py`
@@ -437,7 +480,54 @@ git commit -m "feat: support local, external and fts embedding modes"
 
 ```powershell
 git add services/api/app/api/inbound_openai.py services/api/app/qa/rag.py services/api/app/main.py services/api/tests/test_inbound_openai.py
-git commit -m "feat: add openai-compatible inbound chat api with rag"
+git commit -m "feat: add openai chat completions inbound api with rag"
+```
+
+---
+
+## Task V2-7b: 入站 OpenAI Responses API + RAG
+
+**Files:**
+- Create: `services/api/app/api/inbound_responses.py`
+- Create: `services/api/tests/test_inbound_responses.py`
+- Modify: `services/api/app/main.py`
+
+**要点：**
+
+- `POST /v1/responses`
+- 鉴权：`Authorization: Bearer <gateway_token>` 或 `x-api-key`
+- 请求字段：`model`、`input`（字符串或 messages）、`instructions`、`stream`、`temperature`、`max_output_tokens`
+- 非流式响应：
+  - `id`、`object: "response"`、`created_at`、`status: "completed"`、`model`
+  - `output: [{type:"message", role:"assistant", content:[{type:"output_text", text:"..."}]}]`
+  - `output_text`（便利字段）
+  - `usage`
+  - 非标准 `kb_citations`
+- 流式事件（SSE `event:` + `data:`）：
+  - `response.created`
+  - `response.output_item.added`
+  - `response.content_part.added`
+  - `response.output_text.delta`
+  - `response.output_text.done`
+  - `response.content_part.done`
+  - `response.output_item.done`
+  - `response.completed`
+  - `response.failed`
+- RAG：`gateway_rag_mode=auto` 时把检索上下文注入 `instructions`；`off` 时纯代理
+- 错误：按 OpenAI Responses `{error:{type,message}}` 格式返回
+
+**测试：**
+
+- 非流式 mock provider，检查 `output` / `output_text`
+- 流式 mock provider，检查事件名和顺序
+- RAG 注入后 `instructions` 包含引用
+- 无 token 401
+
+**Commit:**
+
+```powershell
+git add services/api/app/api/inbound_responses.py services/api/app/main.py services/api/tests/test_inbound_responses.py
+git commit -m "feat: add openai responses inbound api with rag"
 ```
 
 ---
@@ -525,13 +615,14 @@ git commit -m "feat: expose knowledge base tools over mcp"
 **要点：**
 
 - Provider 列表：新增/编辑/删除/启用
-- 表单：名称、类型、base URL、API key、模型探测、模型下拉、测试连接
+- 表单：名称、类型（OpenAI Chat Completions / OpenAI Responses / Anthropic / Gemini / Custom）、base URL、API key、模型探测、模型下拉、测试连接
 - Custom 适配器高级字段：headers、body 模板、response/stream 路径
 - Embedding：模式切换、外部 provider/model、本地模型状态
 - 网关：开关、端口、RAG 模式、MCP 开关、token 显示/轮换
 - 配置片段：
   - Trae MCP JSON
-  - OpenAI 客户端 base URL/token
+  - OpenAI Chat Completions base URL/token
+  - OpenAI Responses base URL/token
   - Claude 客户端 base URL/token
 - Onboarding 移除 Ollama；改为“添加 Provider → 探测模型 → 测试 → 导入资料”
 - 错误：密钥无效、模型不可用、网关关闭
@@ -607,9 +698,9 @@ git commit -m "refactor: remove ollama and wire external provider"
 
 **要点：**
 
-- `mock_provider.py`：本地 FastAPI 模拟 OpenAI-compatible 流式/非流式
+- `mock_provider.py`：本地 FastAPI 模拟 OpenAI Chat Completions、OpenAI Responses 的流式/非流式
 - 黄金集 10-15 个问题，期望文件/页码
-- `eval_golden.py` 通过本软件 `/api/v1/ask` 或入站 `/v1/chat/completions` 调用，检查引用
+- `eval_golden.py` 通过本软件 `/api/v1/ask` 或入站 `/v1/chat/completions`、`/v1/responses` 调用，检查引用
 - 无真实密钥依赖；真实 provider 可选手动验证
 - 性能记录：导入、检索、首 token、总耗时
 
