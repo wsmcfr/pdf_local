@@ -7,6 +7,7 @@ import httpx
 from .base import Provider, ProviderConfig
 from .errors import ProviderConfigError
 from .openai_compat import OpenAICompatibleProvider
+from .openai_responses import OpenAIResponsesProvider
 
 
 def create_provider(
@@ -18,6 +19,14 @@ def create_provider(
     kind = (config.kind or "").strip()
     if kind == "openai_chat":
         return OpenAICompatibleProvider(
+            config.base_url,
+            config.api_key,
+            config.model,
+            transport=transport,
+            timeout=timeout,
+        )
+    if kind == "openai_responses":
+        return OpenAIResponsesProvider(
             config.base_url,
             config.api_key,
             config.model,
