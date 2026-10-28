@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 import threading
@@ -11,6 +12,7 @@ from typing import Callable
 
 from ..index.indexer import index_document
 from ..index.vector_store import VectorStore
+from .formats import ParsedBlock, parse_office_file
 from .ocr import ocr_page
 from .pdf import extract_pdf_pages
 from .scanner import ScannedFile, scan_folder
@@ -21,6 +23,31 @@ Checkpoint = Callable[[], bool]
 
 OCR_DPI = 300
 LOW_CONFIDENCE_THRESHOLD = 0.75
+
+MIME_BY_SUFFIX = {
+    ".pdf": "application/pdf",
+    ".md": "text/markdown",
+    ".markdown": "text/markdown",
+    ".txt": "text/plain",
+    ".docx": (
+        "application/vnd.openxmlformats-officedocument."
+        "wordprocessingml.document"
+    ),
+    ".pptx": (
+        "application/vnd.openxmlformats-officedocument."
+        "presentationml.presentation"
+    ),
+    ".xlsx": (
+        "application/vnd.openxmlformats-officedocument."
+        "spreadsheetml.sheet"
+    ),
+}
+
+EDITABLE_SUFFIXES = {".docx", ".pptx", ".md", ".markdown", ".txt"}
+
+
+def mime_for(suffix: str) -> str:
+    return MIME_BY_SUFFIX.get(suffix.lower(), "application/octet-stream")
 
 
 class OcrFailed(Exception):
@@ -127,19 +154,24 @@ class IngestPipeline:
         doc_id = existing["id"] if existing else uuid.uuid4().hex
         now = utc_now()
         suffix = item.path.suffix.lower()
-        mime = "application/pdf" if suffix == ".pdf" else "text/plain"
+        mime = mime_for(suffix)
+        editable = int(suffix in EDITABLE_SUFFIXES)
 
         with self._guard():
             self.conn.execute(
                 """
                 INSERT INTO documents (
                   id, root_path, path, file_name, mime, size_bytes, mtime,
-                  content_hash, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)
+                  content_hash, status, editable, source_format,
+                  created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?, ?, ?)
                 ON CONFLICT(path) DO UPDATE SET
                   content_hash = excluded.content_hash,
                   size_bytes = excluded.size_bytes,
                   mtime = excluded.mtime,
+                  mime = excluded.mime,
+                  editable = excluded.editable,
+                  source_format = excluded.source_format,
                   status = 'processing',
                   error = NULL,
                   updated_at = excluded.updated_at
@@ -153,11 +185,14 @@ class IngestPipeline:
                     item.size_bytes,
                     item.mtime,
                     item.content_hash,
+                    editable,
+                    suffix.lstrip("."),
                     now,
                     now,
                 ),
             )
             self.conn.execute("DELETE FROM pages WHERE document_id = ?", (doc_id,))
+            self.conn.execute("DELETE FROM blocks WHERE document_id = ?", (doc_id,))
             self.conn.commit()
 
         try:
@@ -265,16 +300,51 @@ class IngestPipeline:
             )
             return len(pages), average
 
-        text = item.path.read_text(encoding="utf-8", errors="replace")
-        with self._guard():
-            self.conn.execute(
-                """
-                INSERT INTO pages (document_id, page_no, text, is_scanned, created_at)
-                VALUES (?, 1, ?, 0, ?)
-                """,
-                (doc_id, text, now),
+        parsed = parse_office_file(item.path)
+        page_rows = [
+            (doc_id, page.page_no, page.text, 0, now) for page in parsed.pages
+        ]
+        block_rows = [
+            (
+                uuid.uuid4().hex,
+                doc_id,
+                block.page_no,
+                block.order_index,
+                block.kind,
+                block.text,
+                json.dumps(block.locator, ensure_ascii=False),
+                (
+                    json.dumps(block.bbox, ensure_ascii=False)
+                    if block.bbox is not None
+                    else None
+                ),
+                int(block.editable),
+                int(block.approximate),
+                now,
             )
-        return 1, None
+            for block in parsed.blocks
+        ]
+        with self._guard():
+            if page_rows:
+                self.conn.executemany(
+                    """
+                    INSERT INTO pages (
+                      document_id, page_no, text, is_scanned, created_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    page_rows,
+                )
+            if block_rows:
+                self.conn.executemany(
+                    """
+                    INSERT INTO blocks (
+                      id, document_id, page_no, order_index, kind, text,
+                      locator_json, bbox_json, editable, approximate, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    block_rows,
+                )
+        return len(parsed.pages), None
 
     def _mark_failed(self, doc_id: str, error: str) -> None:
         with self._guard():
