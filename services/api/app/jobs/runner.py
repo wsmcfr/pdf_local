@@ -191,17 +191,25 @@ class JobRunner:
                 )
                 self.conn.commit()
 
-            if row["type"] == "scan":
-                completed = IngestPipeline(
+            if row["type"] in ("scan", "import"):
+                pipeline = IngestPipeline(
                     self.conn,
                     lock=self._lock,
                     vector_store=self.vector_store,
                     embedding_service=self.embedding_service,
-                ).run_scan(
-                    job_id,
-                    payload["root_path"],
-                    checkpoint=lambda: self._checkpoint(job_id, control),
                 )
+                if row["type"] == "scan":
+                    completed = pipeline.run_scan(
+                        job_id,
+                        payload["root_path"],
+                        checkpoint=lambda: self._checkpoint(job_id, control),
+                    )
+                else:
+                    completed = pipeline.run_files(
+                        job_id,
+                        payload.get("paths", []),
+                        checkpoint=lambda: self._checkpoint(job_id, control),
+                    )
                 if not completed or not self._checkpoint(job_id, control):
                     return
                 with self._lock:

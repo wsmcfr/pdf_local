@@ -2,6 +2,8 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request
 
+from ..utils.paths import is_supported
+
 router = APIRouter()
 
 
@@ -29,9 +31,32 @@ def scan(payload: dict, request: Request) -> dict:
     return runner(request).enqueue("scan", {"root_path": str(root.resolve())})
 
 
+@router.post("/import/files")
+def import_files(payload: dict, request: Request) -> dict:
+    raw_paths = payload.get("paths")
+    if not isinstance(raw_paths, list) or not raw_paths:
+        raise HTTPException(status_code=400, detail="paths required")
+
+    paths: list[str] = []
+    for raw in raw_paths:
+        path = Path(str(raw)).expanduser()
+        if not path.is_file():
+            raise HTTPException(status_code=400, detail="INVALID_FILE")
+        if not is_supported(path):
+            raise HTTPException(status_code=400, detail="UNSUPPORTED_FILE")
+        paths.append(str(path.resolve()))
+
+    return runner(request).enqueue("import", {"paths": paths})
+
+
 @router.get("/jobs")
 def list_jobs(request: Request) -> list[dict]:
     return runner(request).list_jobs()
+
+
+@router.get("/jobs/{job_id}")
+def get_job(job_id: str, request: Request) -> dict:
+    return _existing_job(job_id, request)
 
 
 @router.post("/jobs/{job_id}/pause")

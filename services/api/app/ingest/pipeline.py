@@ -12,6 +12,8 @@ from typing import Callable
 
 from ..index.indexer import index_document
 from ..index.vector_store import VectorStore
+from ..utils.hashing import sha256_file
+from ..utils.paths import is_supported
 from .formats import ParsedBlock, parse_office_file
 from .ocr import ocr_page
 from .pdf import extract_pdf_pages
@@ -92,7 +94,39 @@ class IngestPipeline:
         a checkpoint asked to stop (cancel or shutdown).
         """
         root = Path(root_path).resolve()
-        files = list(scan_folder(root))
+        return self._run_items(job_id, list(scan_folder(root)), checkpoint)
+
+    def run_files(
+        self,
+        job_id: str,
+        paths: list[str],
+        checkpoint: Checkpoint | None = None,
+    ) -> bool:
+        """Ingest a user-selected list of individual files."""
+        items: list[ScannedFile] = []
+        for raw in paths:
+            path = Path(str(raw)).expanduser().resolve()
+            if not path.is_file() or not is_supported(path):
+                logger.warning("skipping unsupported import path %s", path)
+                continue
+            stat = path.stat()
+            items.append(
+                ScannedFile(
+                    path=path,
+                    root=path.parent,
+                    content_hash=sha256_file(path),
+                    size_bytes=stat.st_size,
+                    mtime=stat.st_mtime,
+                )
+            )
+        return self._run_items(job_id, items, checkpoint)
+
+    def _run_items(
+        self,
+        job_id: str,
+        files: list[ScannedFile],
+        checkpoint: Checkpoint | None,
+    ) -> bool:
         with self._guard():
             self.conn.execute(
                 "UPDATE jobs SET total = ?, processed = 0, progress = 0, "
