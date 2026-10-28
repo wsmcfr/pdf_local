@@ -41,20 +41,38 @@ def delete_document_chunks(conn: sqlite3.Connection, document_id: str) -> None:
     )
 
 
-def search(conn: sqlite3.Connection, query: str, limit: int = 20) -> list[dict]:
+def search(
+    conn: sqlite3.Connection,
+    query: str,
+    limit: int = 20,
+    document_id: str | None = None,
+) -> list[dict]:
     tokens = [token for token in tokenize_zh(query).split() if token]
     if not tokens:
         return []
     match = " OR ".join(_quote(token) for token in tokens)
 
-    rows = conn.execute(
-        """
-        SELECT chunk_id, bm25(chunks_fts) AS score
-        FROM chunks_fts
-        WHERE chunks_fts MATCH ?
-        ORDER BY score
-        LIMIT ?
-        """,
-        (match, limit),
-    ).fetchall()
+    if document_id:
+        rows = conn.execute(
+            """
+            SELECT chunks_fts.chunk_id, bm25(chunks_fts) AS score
+            FROM chunks_fts
+            JOIN chunks ON chunks.id = chunks_fts.chunk_id
+            WHERE chunks_fts MATCH ? AND chunks.document_id = ?
+            ORDER BY score
+            LIMIT ?
+            """,
+            (match, document_id, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT chunk_id, bm25(chunks_fts) AS score
+            FROM chunks_fts
+            WHERE chunks_fts MATCH ?
+            ORDER BY score
+            LIMIT ?
+            """,
+            (match, limit),
+        ).fetchall()
     return [{"chunk_id": row["chunk_id"], "score": abs(row["score"])} for row in rows]

@@ -35,17 +35,31 @@ class HybridRetriever:
         self.vector_store = vector_store
         self.encode_fn = encode_fn
 
-    def search(self, question: str, limit: int = 8) -> list[dict]:
+    def search(
+        self,
+        question: str,
+        limit: int = 8,
+        document_id: str | None = None,
+    ) -> list[dict]:
         if limit <= 0:
             return []
 
-        keyword = fts_search(self.conn, question, limit=KEYWORD_LIMIT)
-        vector_results = self._vector_results(question, limit=VECTOR_LIMIT)
+        keyword = fts_search(
+            self.conn, question, limit=KEYWORD_LIMIT, document_id=document_id
+        )
+        vector_results = self._vector_results(
+            question, limit=VECTOR_LIMIT, document_id=document_id
+        )
 
         fused = rrf_fuse(keyword, vector_results, k=60)[:limit]
         return [self._hydrate(item) for item in fused]
 
-    def _vector_results(self, question: str, limit: int) -> list[dict]:
+    def _vector_results(
+        self,
+        question: str,
+        limit: int,
+        document_id: str | None = None,
+    ) -> list[dict]:
         # Avoid loading the embedding model at all when nothing is indexed or
         # vector embedding is disabled (e.g. ``fts`` mode).
         if self.encode_fn is None or self.vector_store.index.ntotal == 0:
@@ -60,14 +74,26 @@ class HybridRetriever:
         if not vectors or not vectors[0]:
             return []
 
+        fetch = limit * 5 if document_id else limit
         results: list[dict] = []
-        for embedding_id, score in self.vector_store.search(vectors[0], limit=limit):
-            row = self.conn.execute(
-                "SELECT id AS chunk_id FROM chunks WHERE embedding_id = ?",
-                (embedding_id,),
-            ).fetchone()
+        for embedding_id, score in self.vector_store.search(
+            vectors[0], limit=fetch
+        ):
+            if document_id:
+                row = self.conn.execute(
+                    "SELECT id AS chunk_id FROM chunks "
+                    "WHERE embedding_id = ? AND document_id = ?",
+                    (embedding_id, document_id),
+                ).fetchone()
+            else:
+                row = self.conn.execute(
+                    "SELECT id AS chunk_id FROM chunks WHERE embedding_id = ?",
+                    (embedding_id,),
+                ).fetchone()
             if row:
                 results.append({"chunk_id": row["chunk_id"], "score": score})
+            if len(results) >= limit:
+                break
         return results
 
     def _hydrate(self, item: dict) -> dict:
