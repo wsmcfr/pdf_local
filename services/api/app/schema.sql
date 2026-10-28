@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS documents (
   status TEXT NOT NULL DEFAULT 'pending',
   ocr_confidence REAL,
   error TEXT,
+  editable INTEGER NOT NULL DEFAULT 0,
+  source_format TEXT NOT NULL DEFAULT '',
+  converted_from TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   indexed_at TEXT
@@ -50,6 +53,22 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 
 CREATE INDEX IF NOT EXISTS idx_chunks_embedding_id ON chunks(embedding_id);
+
+CREATE TABLE IF NOT EXISTS blocks (
+  id TEXT PRIMARY KEY,
+  document_id TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  page_no INTEGER NOT NULL,
+  order_index INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  text TEXT NOT NULL DEFAULT '',
+  locator_json TEXT NOT NULL DEFAULT '{}',
+  bbox_json TEXT,
+  editable INTEGER NOT NULL DEFAULT 0,
+  approximate INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_blocks_document ON blocks(document_id, order_index);
 
 CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
   chunk_id UNINDEXED,
@@ -119,4 +138,4 @@ CREATE TABLE IF NOT EXISTS model_cache (
   PRIMARY KEY (provider_id)
 );
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;

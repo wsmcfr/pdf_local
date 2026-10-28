@@ -1,6 +1,14 @@
 from pathlib import Path
 
-SUPPORTED_SUFFIXES = {".pdf", ".md", ".markdown", ".txt"}
+SUPPORTED_SUFFIXES = {
+    ".pdf",
+    ".md",
+    ".markdown",
+    ".txt",
+    ".docx",
+    ".pptx",
+    ".xlsx",
+}
 
 
 def is_supported(path: Path) -> bool:

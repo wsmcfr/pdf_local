@@ -15,6 +15,27 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
     return conn
 
 
+def _ensure_columns(
+    conn: sqlite3.Connection, table: str, columns: dict[str, str]
+) -> None:
+    """Add columns introduced after a database was first created."""
+    existing = {
+        row["name"] for row in conn.execute(f"PRAGMA table_info({table})")
+    }
+    for name, ddl in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+
+
 def init_db(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_PATH.read_text(encoding="utf-8"))
+    _ensure_columns(
+        conn,
+        "documents",
+        {
+            "editable": "INTEGER NOT NULL DEFAULT 0",
+            "source_format": "TEXT NOT NULL DEFAULT ''",
+            "converted_from": "TEXT",
+        },
+    )
     conn.commit()
