@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, RefreshCw } from "lucide-react";
+import {
+  FilePlus,
+  FolderOpen,
+  MessageSquare,
+  RefreshCw,
+} from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
-import { pickDirectory, startScan } from "../api/scan";
+import {
+  pickDirectory,
+  pickFiles,
+  startImport,
+  startScan,
+} from "../api/scan";
 import type { DocumentRow } from "../api/types";
 
 const STATUS_LABELS: Record<string, string> = {
@@ -11,6 +21,8 @@ const STATUS_LABELS: Record<string, string> = {
   ready: "就绪",
   failed: "失败",
 };
+
+type MenuState = { x: number; y: number; doc: DocumentRow } | null;
 
 function confidenceText(value: number | null): string {
   if (value === null) return "-";
@@ -26,6 +38,7 @@ export default function Library() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [importing, setImporting] = useState(false);
+  const [menu, setMenu] = useState<MenuState>(null);
   const navigate = useNavigate();
 
   const load = useCallback(async () => {
@@ -47,13 +60,28 @@ export default function Library() {
     void load();
   }, [load]);
 
-  async function pickFolder() {
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+
+  async function importFolder() {
     setError("");
     setImporting(true);
     try {
       const selected = await pickDirectory();
       if (!selected) return;
-
       const job = await startScan(selected);
       navigate("/jobs", { state: { jobId: job.id } });
     } catch (cause) {
@@ -63,13 +91,34 @@ export default function Library() {
     }
   }
 
+  async function importFiles() {
+    setError("");
+    setImporting(true);
+    try {
+      const selected = await pickFiles();
+      if (selected.length === 0) return;
+      const job = await startImport(selected);
+      navigate("/jobs", { state: { jobId: job.id } });
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "导入失败");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function openChat(document: DocumentRow) {
+    setMenu(null);
+    navigate(`/chat?document=${document.id}`);
+  }
+
   return (
     <section className="page">
       <header className="page-header">
         <div>
           <h1>资料库</h1>
           <p className="muted">
-            共 {rows.length} 份资料。支持 PDF、Markdown 与纯文本文件。
+            共 {rows.length} 份资料。支持 PDF、Word、PPT、Excel、Markdown 与 TXT；
+            右键文件可直接和它对话。
           </p>
         </div>
         <div className="header-actions">
@@ -82,12 +131,21 @@ export default function Library() {
           </button>
           <button
             type="button"
-            className="primary"
-            onClick={() => void pickFolder()}
+            className="secondary"
+            onClick={() => void importFolder()}
             disabled={importing}
           >
             <FolderOpen size={15} aria-hidden="true" />
-            {importing ? "正在创建导入任务…" : "选择文件夹导入"}
+            导入文件夹
+          </button>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => void importFiles()}
+            disabled={importing}
+          >
+            <FilePlus size={15} aria-hidden="true" />
+            {importing ? "正在创建导入任务…" : "导入文件"}
           </button>
         </div>
       </header>
@@ -98,11 +156,25 @@ export default function Library() {
         <p className="empty">正在加载资料…</p>
       ) : rows.length === 0 ? (
         <div className="empty">
-          <p>还没有资料。选择一个文件夹开始导入。</p>
-          <button type="button" className="primary" onClick={() => void pickFolder()}>
-            <FolderOpen size={15} aria-hidden="true" />
-            选择文件夹
-          </button>
+          <p>还没有资料。可以选文件，也可以直接导入一个文件夹。</p>
+          <div className="header-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => void importFolder()}
+            >
+              <FolderOpen size={15} aria-hidden="true" />
+              选择文件夹
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void importFiles()}
+            >
+              <FilePlus size={15} aria-hidden="true" />
+              选择文件
+            </button>
+          </div>
         </div>
       ) : (
         <div className="table-shell">
@@ -117,7 +189,19 @@ export default function Library() {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={row.id}>
+                <tr
+                  key={row.id}
+                  className="document-row"
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setMenu({
+                      x: event.clientX,
+                      y: event.clientY,
+                      doc: row,
+                    });
+                  }}
+                  onDoubleClick={() => openChat(row)}
+                >
                   <td title={row.path}>{row.file_name}</td>
                   <td>
                     <span className={`tag status-${row.status}`}>
@@ -137,6 +221,22 @@ export default function Library() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {menu && (
+        <div
+          className="context-menu"
+          style={{
+            left: Math.min(menu.x, window.innerWidth - 220),
+            top: Math.min(menu.y, window.innerHeight - 64),
+          }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button type="button" onClick={() => openChat(menu.doc)}>
+            <MessageSquare size={14} aria-hidden="true" />
+            和这个文件对话
+          </button>
         </div>
       )}
     </section>

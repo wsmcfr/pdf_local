@@ -35,7 +35,7 @@ describe("App", () => {
     expect(screen.getByText("Local KB")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "资料库" })).toBeInTheDocument();
     expect(
-      await screen.findByText("还没有资料。选择一个文件夹开始导入。"),
+      await screen.findByText("还没有资料。可以选文件，也可以直接导入一个文件夹。"),
     ).toBeInTheDocument();
     expect(await screen.findByText("Provider 未配置")).toBeInTheDocument();
     expect(await screen.findByText("网关已关闭")).toBeInTheDocument();

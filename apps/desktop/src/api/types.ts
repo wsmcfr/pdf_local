@@ -9,6 +9,9 @@ export type DocumentRow = {
   status: string;
   ocr_confidence: number | null;
   error: string | null;
+  editable?: boolean;
+  source_format?: string;
+  converted_from?: string | null;
   indexed_at: string | null;
 };
 

@@ -6,7 +6,13 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import {
+  FileText,
+  PanelRightClose,
+  PanelRightOpen,
+  X,
+} from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import { streamAsk, type AskEvent } from "../api/stream";
 import type { Citation, DocumentRow, SourceChunk } from "../api/types";
@@ -17,6 +23,12 @@ const SUGGESTIONS = [
   "主要结论是什么？",
   "整理关键流程",
   "有哪些风险？",
+];
+
+const SCOPED_SUGGESTIONS = [
+  "这份文件的要点是什么？",
+  "总结这份文件",
+  "有哪些风险或待办？",
 ];
 
 const CITATION_PATTERN = /\[([^\[\]]+?)\s+(p\.|§)(\d+)\]/g;
@@ -101,6 +113,7 @@ function describeError(data: { code?: string; message: string }): string {
     RETRIEVAL_FAILED: "检索失败，请稍后重试。",
     LLM_ERROR: "生成回答失败，请稍后重试。",
     QUESTION_REQUIRED: "请输入问题。",
+    DOCUMENT_NOT_FOUND: "找不到这个文件，可能已被移除。",
   };
   return messages[data.code ?? ""] ?? data.message;
 }
@@ -122,6 +135,13 @@ export default function Chat() {
   const [answered, setAnswered] = useState(false);
   const [selected, setSelected] = useState<SourceChunk | null>(null);
   const [viewerOpen, setViewerOpen] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const scopedId = searchParams.get("document") ?? "";
+  const [scopeDoc, setScopeDoc] = useState<DocumentRow | null>(null);
+  const [scopeError, setScopeError] = useState("");
+  const [contextMode, setContextMode] = useState<
+    "" | "full_text" | "retrieval"
+  >("");
   const abortRef = useRef<AbortController | null>(null);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -153,6 +173,51 @@ export default function Chat() {
       setAnswer((prev) => prev + pending.slice(0, take));
     }, 16);
   }, [stopPump]);
+
+  // Switching to (or leaving) a document scope starts a fresh conversation.
+  useEffect(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    stopPump();
+    pendingRef.current = "";
+
+    setQuestion("");
+    setAsked("");
+    setAnswer("");
+    setSources([]);
+    setCitations([]);
+    setInvalid([]);
+    setError("");
+    setAnswered(false);
+    setSelected(null);
+    setContextMode("");
+    setScopeError("");
+
+    if (!scopedId) {
+      setScopeDoc(null);
+      return;
+    }
+
+    let cancelled = false;
+    apiFetch(`/documents/${scopedId}`)
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json() as Promise<DocumentRow>;
+      })
+      .then((document) => {
+        if (!cancelled) setScopeDoc(document);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setScopeDoc(null);
+          setScopeError("找不到这个文件，可能已被移除。");
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [scopedId, stopPump]);
 
   useEffect(() => {
     let cancelled = false;
@@ -227,6 +292,7 @@ export default function Chat() {
     setError("");
     setAnswered(false);
     setSelected(null);
+    setContextMode("");
 
     try {
       await streamAsk(
@@ -235,6 +301,11 @@ export default function Chat() {
           if (event.event === "retrieval") {
             sourcesRef.current = event.data.chunks;
             setSources(event.data.chunks);
+            setContextMode(
+              event.data.context_mode === "full_text"
+                ? "full_text"
+                : "retrieval",
+            );
           }
           if (event.event === "token") {
             pendingRef.current += event.data.text;
@@ -263,6 +334,7 @@ export default function Chat() {
           if (event.event === "error") setError(describeError(event.data));
         },
         controller.signal,
+        scopedId || undefined,
       );
     } catch (cause) {
       if (!controller.signal.aborted) {
@@ -324,10 +396,31 @@ export default function Chat() {
     <section className="page chat-page">
       <header className="page-header chat-page-header">
         <div>
-          <h1>问答</h1>
-          <p className="muted">回答只依据已导入的资料，并标注原文页码。</p>
+          <h1>{scopeDoc ? "单文件问答" : "问答"}</h1>
+          <p className="muted">
+            {scopeDoc
+              ? `当前只使用《${scopeDoc.file_name}》作为回答依据。`
+              : "回答只依据已导入的资料，并标注原文页码。"}
+          </p>
         </div>
         <div className="header-actions">
+          {scopedId && (
+            <span className={`scope-chip${scopeDoc ? "" : " is-missing"}`}>
+              <FileText size={14} aria-hidden="true" />
+              <span className="scope-name">
+                {scopeDoc?.file_name ?? scopeError ?? "正在加载文件…"}
+              </span>
+              <button
+                type="button"
+                className="scope-exit"
+                onClick={() => setSearchParams({})}
+                aria-label="退出单文件对话"
+                title="退出单文件对话"
+              >
+                <X size={13} aria-hidden="true" />
+              </button>
+            </span>
+          )}
           <button
             type="button"
             className="secondary"
@@ -353,26 +446,42 @@ export default function Chat() {
           >
             {!asked && (
               <div className="chat-empty">
-                <h2>从资料里找答案</h2>
+                <h2>
+                  {scopeDoc
+                    ? `与《${scopeDoc.file_name}》对话`
+                    : "从资料里找答案"}
+                </h2>
                 <p className="muted">
-                  回答会逐字显示，点击引用可在右侧核对原文。
+                  {scopeDoc
+                    ? "这份文件的全部文字会作为上下文；内容过长时自动改为文件内检索。"
+                    : "回答会逐字显示，点击引用可在右侧核对原文。"}
                 </p>
                 <div className="chat-suggestions">
-                  {SUGGESTIONS.map((suggestion) => (
-                    <button
-                      type="button"
-                      key={suggestion}
-                      className="suggestion"
-                      onClick={() => chooseSuggestion(suggestion)}
-                    >
-                      {suggestion}
-                    </button>
-                  ))}
+                  {(scopeDoc ? SCOPED_SUGGESTIONS : SUGGESTIONS).map(
+                    (suggestion) => (
+                      <button
+                        type="button"
+                        key={suggestion}
+                        className="suggestion"
+                        onClick={() => chooseSuggestion(suggestion)}
+                      >
+                        {suggestion}
+                      </button>
+                    ),
+                  )}
                 </div>
               </div>
             )}
 
             {asked && <div className="chat-question">{asked}</div>}
+
+            {scopedId && contextMode && (
+              <p className={`context-mode ${contextMode}`}>
+                {contextMode === "full_text"
+                  ? "已载入该文件全文"
+                  : "文件较长，已切换为文件内检索"}
+              </p>
+            )}
 
             {error && <p className="notice error">{error}</p>}
             {noAnswer && (

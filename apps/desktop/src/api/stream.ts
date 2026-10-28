@@ -2,7 +2,13 @@ import { apiFetch } from "./client";
 import type { Citation, SourceChunk } from "./types";
 
 export type AskEvent =
-  | { event: "retrieval"; data: { chunks: SourceChunk[] } }
+  | {
+      event: "retrieval";
+      data: {
+        chunks: SourceChunk[];
+        context_mode?: "full_text" | "retrieval";
+      };
+    }
   | { event: "token"; data: { text: string } }
   | { event: "citations"; data: { citations: Citation[]; invalid: Citation[] } }
   | { event: "done"; data: { text: string; model: string | null } }
@@ -20,10 +26,13 @@ export async function streamAsk(
   question: string,
   onEvent: (event: AskEvent) => void,
   signal?: AbortSignal,
+  documentId?: string,
 ): Promise<void> {
   const response = await apiFetch("/ask", {
     method: "POST",
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(
+      documentId ? { question, document_id: documentId } : { question },
+    ),
     signal,
   });
   if (!response.ok) {
